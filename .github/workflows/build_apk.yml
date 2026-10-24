@@ -1,4 +1,4 @@
-name: Build Hams APK v2
+name: Build Hams 12 Voices APK
 
 on:
   push:
@@ -8,6 +8,15 @@ jobs:
   build_apk:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Repository Files
+        uses: actions/checkout@v4
+
+      - name: Backup Uploaded 12 MP3 Files
+        run: |
+          mkdir -p /tmp/hams_mp3
+          find . -maxdepth 3 -iname "*.mp3" -exec cp {} /tmp/hams_mp3/ \; || true
+          ls -la /tmp/hams_mp3/
+
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
@@ -19,11 +28,26 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Create Hams Project & Fix All 7 Issues
+      - name: Create Hams Project & Bundle 12 Real MP3 Files
         run: |
           flutter create --org com.hams.salawat --project-name hams_app .
 
-          # 1. توليد أيقونة تطبيق هَمْس تلقائياً واستبدال أيقونة Flutter
+          # 1. نقل ملفات الـ MP3 الـ 12 المرفوعة إلى مجلد assets/audio داخل التطبيق
+          mkdir -p assets/audio
+          cp /tmp/hams_mp3/*.mp3 assets/audio/ 2>/dev/null || true
+
+          # تأمين جميع الملفات من voice1.mp3 إلى voice12.mp3 في حال نقص أي ملف
+          FIRST_MP3=$(ls assets/audio/*.mp3 2>/dev/null | head -n 1 || true)
+          if [ -n "$FIRST_MP3" ]; then
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if [ ! -f "assets/audio/voice${i}.mp3" ]; then
+                cp "$FIRST_MP3" "assets/audio/voice${i}.mp3"
+              fi
+            done
+          fi
+          ls -la assets/audio/
+
+          # 2. توليد أيقونة تطبيق هَمْس تلقائياً واستبدال أيقونة Flutter
           python3 - << 'PYEOF'
           import os, struct, zlib
 
@@ -38,17 +62,14 @@ jobs:
                   for x in range(size):
                       dx, dy = x - cx, y - cy
                       dist_center = (dx*dx + dy*dy) ** 0.5
-                      # خلفية زمردية متدرجة مع إطار ذهبي خفيف
                       if dist_center > size * 0.47:
                           r, g, b, a = 4, 78, 56, 255
                       else:
                           r, g, b, a = 6, 95, 70, 255
-                      # رسم هلال ذهبي في المنتصف
                       d1 = ((x - cx)**2 + (y - cy)**2) ** 0.5
                       d2 = ((x - cut_x)**2 + (y - cut_y)**2) ** 0.5
                       if d1 < r_outer and d2 > r_inner:
                           r, g, b, a = 245, 158, 11, 255
-                      # نجمة ذهبية صغيرة بجوار الهلال
                       ds = ((x - (cx - size*0.14))**2 + (y - (cy - size*0.12))**2) ** 0.5
                       if ds < size * 0.045:
                           r, g, b, a = 251, 191, 36, 255
@@ -67,7 +88,6 @@ jobs:
           os.makedirs("assets/icon", exist_ok=True)
           create_hams_icon("assets/icon/app_icon.png", 512)
 
-          # استبدال جميع أيقونات mipmap الافتراضية مباشرة أيضاً لضمان التغيير 100%
           res_base = "android/app/src/main/res"
           for folder, sz in [("mipmap-mdpi", 48), ("mipmap-hdpi", 72), ("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144), ("mipmap-xxxhdpi", 192)]:
               p = os.path.join(res_base, folder)
@@ -75,12 +95,12 @@ jobs:
               create_hams_icon(os.path.join(p, "ic_launcher.png"), sz)
           PYEOF
 
-          # 2. إضافة المكتبات اللازمة للصوت والإشعارات والأذونات والأيقونة
+          # 3. إعداد pubspec.yaml مع مكتبة audioplayers ومجلد assets/audio/
           cat << 'EOF' > pubspec.yaml
           name: hams_app
           description: "هَمْس | Hams - رفيقك للتذكير بالصلاة على النبي ﷺ"
           publish_to: 'none'
-          version: 2.0.0+2
+          version: 4.0.0+4
 
           environment:
             sdk: '>=3.2.0 <4.0.0'
@@ -89,7 +109,7 @@ jobs:
             flutter:
               sdk: flutter
             shared_preferences: ^2.2.3
-            flutter_tts: ^4.0.2
+            audioplayers: ^6.0.0
             flutter_local_notifications: ^17.2.1
             permission_handler: ^11.3.1
 
@@ -107,9 +127,11 @@ jobs:
 
           flutter:
             uses-material-design: true
+            assets:
+              - assets/audio/
           EOF
 
-          # 3. تحديث AndroidManifest.xml بجميع الأذونات المطلوبة واسم التطبيق
+          # 4. تحديث AndroidManifest.xml بجميع الأذونات المطلوبة
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -119,12 +141,6 @@ jobs:
               <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
               <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
               <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-
-              <queries>
-                  <intent>
-                      <action android:name="android.intent.action.TTS_SERVICE" />
-                  </intent>
-              </queries>
 
               <application
                   android:label="هَمْس | Hams"
@@ -153,14 +169,14 @@ jobs:
           </manifest>
           EOF
 
-          # 4. كتابة الكود الكامل مع Splash Screen + عداد يبدأ من صفر + اختيار عشوائي + صوت ناطق + إشعارات وأذونات
+          # 5. كتابة الكود الكامل مع الصيغ الـ 12 الفعلية ومشغل MP3 الحقيقي
           cat << 'EOF' > lib/main.dart
           import 'dart:async';
           import 'dart:math';
           import 'package:flutter/material.dart';
           import 'package:flutter/services.dart';
           import 'package:shared_preferences/shared_preferences.dart';
-          import 'package:flutter_tts/flutter_tts.dart';
+          import 'package:audioplayers/audioplayers.dart';
           import 'package:flutter_local_notifications/flutter_local_notifications.dart';
           import 'package:permission_handler/permission_handler.dart';
 
@@ -312,7 +328,7 @@ jobs:
           }
 
           // ===================================================================
-          // الشاشة الرئيسية للتطبيق
+          // الشاشة الرئيسية للتطبيق (مع الـ 12 صيغة صوتية كاملة)
           // ===================================================================
           class HamsMainScreen extends StatefulWidget {
             const HamsMainScreen({super.key});
@@ -322,7 +338,7 @@ jobs:
           }
 
           class _HamsMainScreenState extends State<HamsMainScreen> {
-            final FlutterTts _tts = FlutterTts();
+            final AudioPlayer _audioPlayer = AudioPlayer();
             final Random _random = Random();
 
             int _currentIndex = 0;
@@ -339,35 +355,59 @@ jobs:
             int _tasbihCount = 0;
             int _totalCount = 0;
 
-            // قائمة الأذكار وتحديد جميع الأذكار افتراضياً ليعمل العشوائي عليها كلها
+            // قائمة الـ 12 صيغة الفعلية المستخرجة من تطبيق الشفيع
             final List<Map<String, String>> _adhkarList = [
               {
-                'display': 'صَلِّ عَلَى مُحَمَّدٍ ﷺ',
-                'speak': 'صل على محمد، اللهم صل وسلم على سيدنا محمد',
+                'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ',
+                'file': 'audio/voice1.mp3',
+              },
+              {
+                'display': 'صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ',
+                'file': 'audio/voice2.mp3',
+              },
+              {
+                'display': 'اللَّهُمَّ صَلِّ عَلَى نَبِيِّنَا مُحَمَّدٍ',
+                'file': 'audio/voice3.mp3',
+              },
+              {
+                'display': 'صَلِّ عَلَى النَّبِيِّ',
+                'file': 'audio/voice4.mp3',
+              },
+              {
+                'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ، كَمَا صَلَّيْتَ عَلَى إِبْرَاهِيمَ، وَبَارِكْ عَلَى مُحَمَّدٍ، وَعَلَى آلِ مُحَمَّدٍ، كَمَا بَارَكْتَ عَلَى إِبْرَاهِيمَ وَآلِ إِبْرَاهِيمَ',
+                'file': 'audio/voice5.mp3',
+              },
+              {
+                'display': 'صَلِّ عَلَى رَسُولِ اللهِ',
+                'file': 'audio/voice6.mp3',
+              },
+              {
+                'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى أَزْوَاجِهِ وَذُرِّيَّتِهِ',
+                'file': 'audio/voice7.mp3',
               },
               {
                 'display': 'اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ',
-                'speak': 'اللهم صل وسلم على نبينا محمد',
-              },
-              {
-                'display': 'صَلُّوا عَلَى الحَبِيبِ مُحَمَّدٍ ﷺ',
-                'speak': 'صلوا على الحبيب محمد صلى الله عليه وسلم',
+                'file': 'audio/voice8.mp3',
               },
               {
                 'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ',
-                'speak': 'اللهم صل على محمد وعلى آل محمد',
+                'file': 'audio/voice9.mp3',
               },
               {
-                'display': 'أَسْتَغْفِرُ اللَّهَ وَأَتُوبُ إِلَيْهِ',
-                'speak': 'أستغفر الله العظيم وأتوب إليه',
+                'display': 'الصَّلَاةُ وَالسَّلَامُ عَلَيْكَ يَا رَسُولَ اللهِ',
+                'file': 'audio/voice10.mp3',
               },
               {
-                'display': 'سُبْحَانَ اللَّهِ وَبِحَمْدِهِ، سُبْحَانَ اللَّهِ العَظِيمِ',
-                'speak': 'سبحان الله وبحمده، سبحان الله العظيم',
+                'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ',
+                'file': 'audio/voice11.mp3',
+              },
+              {
+                'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ النَّبِيِّ الْأُمِّيِّ وَعَلَى آلِهِ وَصَحْبِهِ وَسَلِّمْ',
+                'file': 'audio/voice12.mp3',
               },
             ];
 
-            Set<int> _selectedIndices = {0, 1, 2, 3, 4, 5};
+            Set<int> _selectedIndices = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
             PermissionStatus _notifPermStatus = PermissionStatus.denied;
             PermissionStatus _batteryPermStatus = PermissionStatus.denied;
             Timer? _periodicTimer;
@@ -375,19 +415,9 @@ jobs:
             @override
             void initState() {
               super.initState();
-              _initAudioEngine();
               _loadData();
               _checkAndRequestPermissionsOnStart();
               _restartTimer();
-            }
-
-            Future<void> _initAudioEngine() async {
-              try {
-                await _tts.setLanguage('ar-SA');
-                await _tts.setSpeechRate(0.45);
-                await _tts.setPitch(1.0);
-                await _tts.setVolume(_volume);
-              } catch (_) {}
             }
 
             Future<void> _checkAndRequestPermissionsOnStart() async {
@@ -407,43 +437,48 @@ jobs:
 
             Future<void> _loadData() async {
               final prefs = await SharedPreferences.getInstance();
-              final savedList = prefs.getStringList('selectedIndices');
+              final savedList = prefs.getStringList('selectedIndices_v4');
               setState(() {
-                _isEnabled = prefs.getBool('enabled') ?? true;
-                _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
-                _randomMode = prefs.getBool('randomMode') ?? true;
-                _fridayDouble = prefs.getBool('fridayDouble') ?? true;
-                _quietHours = prefs.getBool('quietHours') ?? false;
-                _intervalMinutes = prefs.getInt('interval') ?? 15;
-                _volume = prefs.getDouble('volume') ?? 1.0;
+                _isEnabled = prefs.getBool('enabled_v4') ?? true;
+                _notificationsEnabled = prefs.getBool('notificationsEnabled_v4') ?? true;
+                _randomMode = prefs.getBool('randomMode_v4') ?? true;
+                _fridayDouble = prefs.getBool('fridayDouble_v4') ?? true;
+                _quietHours = prefs.getBool('quietHours_v4') ?? false;
+                _intervalMinutes = prefs.getInt('interval_v4') ?? 15;
+                _volume = prefs.getDouble('volume_v4') ?? 1.0;
 
-                // تصفير العدادات افتراضياً إلى 0
-                _todayCount = prefs.getInt('todayCount_v2') ?? 0;
-                _tasbihCount = prefs.getInt('tasbihCount_v2') ?? 0;
-                _totalCount = prefs.getInt('totalCount_v2') ?? 0;
+                _todayCount = prefs.getInt('todayCount_v4') ?? 0;
+                _tasbihCount = prefs.getInt('tasbihCount_v4') ?? 0;
+                _totalCount = prefs.getInt('totalCount_v4') ?? 0;
 
                 if (savedList != null && savedList.isNotEmpty) {
-                  _selectedIndices = savedList.map((e) => int.tryParse(e) ?? 0).toSet();
+                  _selectedIndices = savedList
+                      .map((e) => int.tryParse(e) ?? 0)
+                      .where((idx) => idx >= 0 && idx < _adhkarList.length)
+                      .toSet();
+                  if (_selectedIndices.isEmpty) {
+                    _selectedIndices = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+                  }
                 } else {
-                  _selectedIndices = {0, 1, 2, 3, 4, 5};
+                  _selectedIndices = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
                 }
               });
             }
 
             Future<void> _saveData() async {
               final prefs = await SharedPreferences.getInstance();
-              await prefs.setBool('enabled', _isEnabled);
-              await prefs.setBool('notificationsEnabled', _notificationsEnabled);
-              await prefs.setBool('randomMode', _randomMode);
-              await prefs.setBool('fridayDouble', _fridayDouble);
-              await prefs.setBool('quietHours', _quietHours);
-              await prefs.setInt('interval', _intervalMinutes);
-              await prefs.setDouble('volume', _volume);
-              await prefs.setInt('todayCount_v2', _todayCount);
-              await prefs.setInt('tasbihCount_v2', _tasbihCount);
-              await prefs.setInt('totalCount_v2', _totalCount);
+              await prefs.setBool('enabled_v4', _isEnabled);
+              await prefs.setBool('notificationsEnabled_v4', _notificationsEnabled);
+              await prefs.setBool('randomMode_v4', _randomMode);
+              await prefs.setBool('fridayDouble_v4', _fridayDouble);
+              await prefs.setBool('quietHours_v4', _quietHours);
+              await prefs.setInt('interval_v4', _intervalMinutes);
+              await prefs.setDouble('volume_v4', _volume);
+              await prefs.setInt('todayCount_v4', _todayCount);
+              await prefs.setInt('tasbihCount_v4', _tasbihCount);
+              await prefs.setInt('totalCount_v4', _totalCount);
               await prefs.setStringList(
-                'selectedIndices',
+                'selectedIndices_v4',
                 _selectedIndices.map((e) => e.toString()).toList(),
               );
             }
@@ -460,17 +495,15 @@ jobs:
               });
             }
 
-            Future<void> _speakDhikr(int index, {bool showNotif = true}) async {
+            Future<void> _playRealMp3Dhikr(int index, {bool showNotif = true}) async {
               final item = _adhkarList[index];
               HapticFeedback.mediumImpact();
 
-              // نطق الذكر بالصوت العربي الواضح
               try {
-                await _tts.stop();
-                await _tts.setVolume(_volume);
-                await _tts.setLanguage('ar');
-                await _tts.speak(item['speak']!);
-              } catch (_) {
+                await _audioPlayer.stop();
+                await _audioPlayer.setVolume(_volume);
+                await _audioPlayer.play(AssetSource(item['file']!));
+              } catch (e) {
                 SystemSound.play(SystemSoundType.alert);
               }
 
@@ -480,21 +513,20 @@ jobs:
               });
               await _saveData();
 
-              // إرسال إشعار أندرويد حقيقي إذا كانت الإشعارات مفعلة
               if (showNotif && _notificationsEnabled) {
                 const androidDetails = AndroidNotificationDetails(
-                  'hams_channel_v2',
+                  'hams_channel_v4',
                   'تذكيرات هَمْس الصوتية',
                   channelDescription: 'إشعارات التذكير بالصلاة على النبي ﷺ',
                   importance: Importance.high,
                   priority: Priority.high,
-                  playSound: true,
+                  playSound: false,
                 );
                 const details = NotificationDetails(android: androidDetails);
                 await localNotifications.show(
                   DateTime.now().millisecondsSinceEpoch ~/ 1000,
                   'هَمْس | Hams 🕌',
-                  item['display']!,
+                  '« ${item['display']!} »',
                   details,
                 );
               }
@@ -505,8 +537,8 @@ jobs:
                   SnackBar(
                     backgroundColor: const Color(0xFF065F46),
                     content: Text(
-                      '🔊 ${item['display']}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      '🔊 « ${item['display']} »',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                     ),
                     duration: const Duration(seconds: 3),
                   ),
@@ -521,17 +553,17 @@ jobs:
               }
               final pool = _selectedIndices.isNotEmpty
                   ? _selectedIndices.toList()
-                  : [0, 1, 2, 3, 4, 5];
+                  : List.generate(_adhkarList.length, (i) => i);
               final chosenIndex = _randomMode
                   ? pool[_random.nextInt(pool.length)]
                   : pool.first;
-              await _speakDhikr(chosenIndex, showNotif: true);
+              await _playRealMp3Dhikr(chosenIndex, showNotif: true);
             }
 
             @override
             void dispose() {
               _periodicTimer?.cancel();
-              _tts.stop();
+              _audioPlayer.dispose();
               super.dispose();
             }
 
@@ -578,7 +610,7 @@ jobs:
                       title: const Text('تفعيل التذكير الصوتي التلقائي',
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: Text(_isEnabled
-                          ? 'نشط ويعمل عشوائياً بين الأذكار المحددة'
+                          ? 'نشط ويعمل عشوائياً بين الصيغ الـ ${_selectedIndices.length} المحددة'
                           : 'متوقف مؤقتاً'),
                       value: _isEnabled,
                       activeColor: const Color(0xFF065F46),
@@ -639,10 +671,10 @@ jobs:
                       side: const BorderSide(color: Color(0xFF065F46)),
                     ),
                     child: SwitchListTile(
-                      title: const Text('🎲 التشغيل العشوائي للأذكار',
+                      title: const Text('🎲 التشغيل العشوائي لجميع الصيغ المحددة',
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: const Text(
-                          'ينطق ذكراً مختلفاً في كل مرة من الأذكار المحددة بالأسفل'),
+                          'يختار صيغة صوتية مختلفة تلقائياً في كل مرة من الصيغ المحددة بالأسفل'),
                       value: _randomMode,
                       activeColor: const Color(0xFF065F46),
                       onChanged: (val) {
@@ -652,19 +684,34 @@ jobs:
                     ),
                   ),
                   const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF065F46),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: _triggerRandomSalawat,
+                    icon: const Icon(Icons.shuffle),
+                    label: const Text('تشغيل صيغة عشوائية بالصوت الحقيقي الآن',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 12),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('حدد الأذكار المشمولة (أو اضغط 🔊 للسماع):',
+                      const Text('صيغ الصلاة على النبي ﷺ (12 صيغة صوتية):',
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       TextButton(
                         onPressed: () {
                           setState(() {
-                            _selectedIndices = {0, 1, 2, 3, 4, 5};
+                            _selectedIndices = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
                           });
                           _saveData();
                         },
-                        child: const Text('تحديد الكل'),
+                        child: const Text('تحديد الكل (12)'),
                       ),
                     ],
                   ),
@@ -688,35 +735,24 @@ jobs:
                           },
                         ),
                         title: Text(
-                          _adhkarList[i]['display']!,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          '${i + 1}- « ${_adhkarList[i]['display']!} »',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13.5,
+                            height: 1.4,
+                          ),
                         ),
-                        subtitle: const Text('اضغط هنا أو على السماعة لسماع الصوت الآن',
-                            style: TextStyle(fontSize: 11)),
-                        onTap: () => _speakDhikr(i, showNotif: false),
+                        subtitle: Text('ملف الصوت: voice${i + 1}.mp3 — اضغط للسماع',
+                            style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        onTap: () => _playRealMp3Dhikr(i, showNotif: false),
                         trailing: IconButton(
-                          icon: const Icon(Icons.volume_up,
-                              color: Color(0xFF065F46), size: 28),
-                          onPressed: () => _speakDhikr(i, showNotif: false),
+                          icon: const Icon(Icons.play_circle_fill,
+                              color: Color(0xFF065F46), size: 32),
+                          onPressed: () => _playRealMp3Dhikr(i, showNotif: false),
                         ),
                       ),
                     );
                   }),
-                  const SizedBox(height: 8),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF065F46),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    onPressed: _triggerRandomSalawat,
-                    icon: const Icon(Icons.shuffle),
-                    label: const Text('تشغيل ذكر عشوائي بالصوت والإشعار الآن',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
                 ],
               );
             }
@@ -759,8 +795,8 @@ jobs:
                                     color: Colors.white,
                                     fontSize: 48,
                                     fontWeight: FontWeight.bold)),
-                            const Text('صَلِّ عَلَى مُحَمَّدٍ ﷺ',
-                                style: TextStyle(color: Colors.white70, fontSize: 14)),
+                            const Text('صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ',
+                                style: TextStyle(color: Colors.white70, fontSize: 13)),
                           ],
                         ),
                       ),
@@ -837,7 +873,7 @@ jobs:
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('مستوى صوت القارئ: ${(_volume * 100).round()}%',
+                          Text('مستوى صوت التذكير: ${(_volume * 100).round()}%',
                               style: const TextStyle(fontWeight: FontWeight.bold)),
                           Slider(
                             value: _volume,
@@ -846,6 +882,7 @@ jobs:
                             activeColor: const Color(0xFF065F46),
                             onChanged: (val) {
                               setState(() => _volume = val);
+                              _audioPlayer.setVolume(val);
                               _saveData();
                             },
                           ),
@@ -990,13 +1027,13 @@ jobs:
           }
           EOF
 
-          # 5. توليد أيقونات اللانشر وبناء الـ APK النهائي
+          # 6. توليد أيقونة اللانشر وبناء الـ APK النهائي
           flutter pub get
           dart run flutter_launcher_icons
           flutter build apk --release
 
-      - name: Upload Updated APK v2
+      - name: Upload 12 Voices APK
         uses: actions/upload-artifact@v4
         with:
-          name: Hams-Ready-APK-v2
+          name: Hams-12-Voices-APK
           path: build/app/outputs/flutter-apk/app-release.apk
