@@ -1,4 +1,4 @@
-name: Build Hams 12 Voices APK
+name: هَمْس | Hams APK
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
 
       - name: Create Hams Project & Bundle 12 Real MP3 Files
         run: |
-          flutter create --org com.hams.salawat --project-name hams_app .
+          flutter create --org com.hams.salawat --project-name hams .
 
           # 1. نقل ملفات الـ MP3 الـ 12 المرفوعة إلى مجلد assets/audio داخل التطبيق
           mkdir -p assets/audio
@@ -45,9 +45,8 @@ jobs:
               fi
             done
           fi
-          ls -la assets/audio/
 
-          # 2. توليد أيقونة تطبيق هَمْس تلقائياً واستبدال أيقونة Flutter
+          # 2. توليد أيقونة تطبيق (هَمْس | Hams) واستبدال أيقونة Flutter
           python3 - << 'PYEOF'
           import os, struct, zlib
 
@@ -95,12 +94,12 @@ jobs:
               create_hams_icon(os.path.join(p, "ic_launcher.png"), sz)
           PYEOF
 
-          # 3. إعداد pubspec.yaml مع مكتبة audioplayers ومجلد assets/audio/
+          # 3. إعداد pubspec.yaml باسم المشروع hams
           cat << 'EOF' > pubspec.yaml
-          name: hams_app
+          name: hams
           description: "هَمْس | Hams - رفيقك للتذكير بالصلاة على النبي ﷺ"
           publish_to: 'none'
-          version: 4.0.0+4
+          version: 1.0.0+1
 
           environment:
             sdk: '>=3.2.0 <4.0.0'
@@ -131,7 +130,7 @@ jobs:
               - assets/audio/
           EOF
 
-          # 4. تحديث AndroidManifest.xml بجميع الأذونات المطلوبة
+          # 4. ضبط اسم التطبيق الرسمي في AndroidManifest.xml على (هَمْس | Hams)
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -169,7 +168,7 @@ jobs:
           </manifest>
           EOF
 
-          # 5. كتابة الكود الكامل مع الصيغ الـ 12 الفعلية ومشغل MP3 الحقيقي
+          # 5. كتابة الكود الكامل لتطبيق (هَمْس | Hams) مع الـ 12 صيغة صوتية
           cat << 'EOF' > lib/main.dart
           import 'dart:async';
           import 'dart:math';
@@ -211,9 +210,6 @@ jobs:
             }
           }
 
-          // ===================================================================
-          // شاشة البداية الترحيبية (Splash Screen)
-          // ===================================================================
           class HamsSplashScreen extends StatefulWidget {
             const HamsSplashScreen({super.key});
 
@@ -327,9 +323,6 @@ jobs:
             }
           }
 
-          // ===================================================================
-          // الشاشة الرئيسية للتطبيق (مع الـ 12 صيغة صوتية كاملة)
-          // ===================================================================
           class HamsMainScreen extends StatefulWidget {
             const HamsMainScreen({super.key});
 
@@ -350,12 +343,10 @@ jobs:
             int _intervalMinutes = 15;
             double _volume = 1.0;
 
-            // العدادات تبدأ من الصفر تماماً عند التثبيت الجديد
             int _todayCount = 0;
             int _tasbihCount = 0;
             int _totalCount = 0;
 
-            // قائمة الـ 12 صيغة الفعلية المستخرجة من تطبيق الشفيع
             final List<Map<String, String>> _adhkarList = [
               {
                 'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ',
@@ -437,19 +428,19 @@ jobs:
 
             Future<void> _loadData() async {
               final prefs = await SharedPreferences.getInstance();
-              final savedList = prefs.getStringList('selectedIndices_v4');
+              final savedList = prefs.getStringList('selectedIndices_v5');
               setState(() {
-                _isEnabled = prefs.getBool('enabled_v4') ?? true;
-                _notificationsEnabled = prefs.getBool('notificationsEnabled_v4') ?? true;
-                _randomMode = prefs.getBool('randomMode_v4') ?? true;
-                _fridayDouble = prefs.getBool('fridayDouble_v4') ?? true;
-                _quietHours = prefs.getBool('quietHours_v4') ?? false;
-                _intervalMinutes = prefs.getInt('interval_v4') ?? 15;
-                _volume = prefs.getDouble('volume_v4') ?? 1.0;
+                _isEnabled = prefs.getBool('enabled_v5') ?? true;
+                _notificationsEnabled = prefs.getBool('notificationsEnabled_v5') ?? true;
+                _randomMode = prefs.getBool('randomMode_v5') ?? true;
+                _fridayDouble = prefs.getBool('fridayDouble_v5') ?? true;
+                _quietHours = prefs.getBool('quietHours_v5') ?? false;
+                _intervalMinutes = prefs.getInt('interval_v5') ?? 15;
+                _volume = prefs.getDouble('volume_v5') ?? 1.0;
 
-                _todayCount = prefs.getInt('todayCount_v4') ?? 0;
-                _tasbihCount = prefs.getInt('tasbihCount_v4') ?? 0;
-                _totalCount = prefs.getInt('totalCount_v4') ?? 0;
+                _todayCount = prefs.getInt('todayCount_v5') ?? 0;
+                _tasbihCount = prefs.getInt('tasbihCount_v5') ?? 0;
+                _totalCount = prefs.getInt('totalCount_v5') ?? 0;
 
                 if (savedList != null && savedList.isNotEmpty) {
                   _selectedIndices = savedList
@@ -467,18 +458,18 @@ jobs:
 
             Future<void> _saveData() async {
               final prefs = await SharedPreferences.getInstance();
-              await prefs.setBool('enabled_v4', _isEnabled);
-              await prefs.setBool('notificationsEnabled_v4', _notificationsEnabled);
-              await prefs.setBool('randomMode_v4', _randomMode);
-              await prefs.setBool('fridayDouble_v4', _fridayDouble);
-              await prefs.setBool('quietHours_v4', _quietHours);
-              await prefs.setInt('interval_v4', _intervalMinutes);
-              await prefs.setDouble('volume_v4', _volume);
-              await prefs.setInt('todayCount_v4', _todayCount);
-              await prefs.setInt('tasbihCount_v4', _tasbihCount);
-              await prefs.setInt('totalCount_v4', _totalCount);
+              await prefs.setBool('enabled_v5', _isEnabled);
+              await prefs.setBool('notificationsEnabled_v5', _notificationsEnabled);
+              await prefs.setBool('randomMode_v5', _randomMode);
+              await prefs.setBool('fridayDouble_v5', _fridayDouble);
+              await prefs.setBool('quietHours_v5', _quietHours);
+              await prefs.setInt('interval_v5', _intervalMinutes);
+              await prefs.setDouble('volume_v5', _volume);
+              await prefs.setInt('todayCount_v5', _todayCount);
+              await prefs.setInt('tasbihCount_v5', _tasbihCount);
+              await prefs.setInt('totalCount_v5', _totalCount);
               await prefs.setStringList(
-                'selectedIndices_v4',
+                'selectedIndices_v5',
                 _selectedIndices.map((e) => e.toString()).toList(),
               );
             }
@@ -515,7 +506,7 @@ jobs:
 
               if (showNotif && _notificationsEnabled) {
                 const androidDetails = AndroidNotificationDetails(
-                  'hams_channel_v4',
+                  'hams_channel_v5',
                   'تذكيرات هَمْس الصوتية',
                   channelDescription: 'إشعارات التذكير بالصلاة على النبي ﷺ',
                   importance: Importance.high,
@@ -581,8 +572,8 @@ jobs:
                   backgroundColor: const Color(0xFF065F46),
                   foregroundColor: Colors.white,
                   title: const Text(
-                    'هَمْس | Hams - الصلاة على النبي ﷺ',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                    'هَمْس | Hams',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19),
                   ),
                   centerTitle: true,
                 ),
@@ -593,7 +584,7 @@ jobs:
                   destinations: const [
                     NavigationDestination(icon: Icon(Icons.mosque), label: 'الرئيسية'),
                     NavigationDestination(icon: Icon(Icons.touch_app), label: 'المسبحة'),
-                    NavigationDestination(icon: Icon(Icons.settings), label: 'الإعدادات والأذونات'),
+                    NavigationDestination(icon: Icon(Icons.settings), label: 'الإعدادات'),
                     NavigationDestination(icon: Icon(Icons.privacy_tip), label: 'الخصوصية'),
                   ],
                 ),
@@ -742,8 +733,8 @@ jobs:
                             height: 1.4,
                           ),
                         ),
-                        subtitle: Text('ملف الصوت: voice${i + 1}.mp3 — اضغط للسماع',
-                            style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        subtitle: const Text('اضغط لسماع الصوت الحقيقي',
+                            style: TextStyle(fontSize: 11, color: Colors.grey)),
                         onTap: () => _playRealMp3Dhikr(i, showNotif: false),
                         trailing: IconButton(
                           icon: const Icon(Icons.play_circle_fill,
@@ -795,7 +786,7 @@ jobs:
                                     color: Colors.white,
                                     fontSize: 48,
                                     fontWeight: FontWeight.bold)),
-                            const Text('صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ',
+                            const Text('اللَّهُمَّ صَلِّ وَسَلِّمْ وَبَارِكْ عَلَى نَبِيِّنَا مُحَمَّدٍ ',
                                 style: TextStyle(color: Colors.white70, fontSize: 13)),
                           ],
                         ),
@@ -1032,8 +1023,8 @@ jobs:
           dart run flutter_launcher_icons
           flutter build apk --release
 
-      - name: Upload 12 Voices APK
+      - name: Upload Hams APK
         uses: actions/upload-artifact@v4
         with:
-          name: Hams-12-Voices-APK
+          name: Hams-APK
           path: build/app/outputs/flutter-apk/app-release.apk
