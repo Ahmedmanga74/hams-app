@@ -1,4 +1,4 @@
-name: Build Hams APK
+name: Build Hams APK v2
 
 on:
   push:
@@ -19,21 +19,159 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Create Hams Flutter Project and Inject Code
+      - name: Create Hams Project & Fix All 7 Issues
         run: |
           flutter create --org com.hams.salawat --project-name hams_app .
-          flutter pub add shared_preferences
-          
-          sed -i 's/android:label="hams_app"/android:label="هَمْس | Hams"/g' android/app/src/main/AndroidManifest.xml
 
+          # 1. توليد أيقونة تطبيق هَمْس تلقائياً واستبدال أيقونة Flutter
+          python3 - << 'PYEOF'
+          import os, struct, zlib
+
+          def create_hams_icon(filename, size=512):
+              raw_data = bytearray()
+              cx, cy = size / 2.0, size / 2.0
+              r_outer = size * 0.34
+              r_inner = size * 0.28
+              cut_x, cut_y = cx - size * 0.10, cy - size * 0.06
+              for y in range(size):
+                  raw_data.append(0)
+                  for x in range(size):
+                      dx, dy = x - cx, y - cy
+                      dist_center = (dx*dx + dy*dy) ** 0.5
+                      # خلفية زمردية متدرجة مع إطار ذهبي خفيف
+                      if dist_center > size * 0.47:
+                          r, g, b, a = 4, 78, 56, 255
+                      else:
+                          r, g, b, a = 6, 95, 70, 255
+                      # رسم هلال ذهبي في المنتصف
+                      d1 = ((x - cx)**2 + (y - cy)**2) ** 0.5
+                      d2 = ((x - cut_x)**2 + (y - cut_y)**2) ** 0.5
+                      if d1 < r_outer and d2 > r_inner:
+                          r, g, b, a = 245, 158, 11, 255
+                      # نجمة ذهبية صغيرة بجوار الهلال
+                      ds = ((x - (cx - size*0.14))**2 + (y - (cy - size*0.12))**2) ** 0.5
+                      if ds < size * 0.045:
+                          r, g, b, a = 251, 191, 36, 255
+                      raw_data.extend([r, g, b, a])
+
+              def png_chunk(chunk_type, data):
+                  return (struct.pack(">I", len(data)) + chunk_type + data +
+                          struct.pack(">I", zlib.crc32(chunk_type + data) & 0xffffffff))
+
+              ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
+              idat = zlib.compress(bytes(raw_data), 9)
+              png_bytes = b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", ihdr) + png_chunk(b"IDAT", idat) + png_chunk(b"IEND", b"")
+              with open(filename, "wb") as f:
+                  f.write(png_bytes)
+
+          os.makedirs("assets/icon", exist_ok=True)
+          create_hams_icon("assets/icon/app_icon.png", 512)
+
+          # استبدال جميع أيقونات mipmap الافتراضية مباشرة أيضاً لضمان التغيير 100%
+          res_base = "android/app/src/main/res"
+          for folder, sz in [("mipmap-mdpi", 48), ("mipmap-hdpi", 72), ("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144), ("mipmap-xxxhdpi", 192)]:
+              p = os.path.join(res_base, folder)
+              os.makedirs(p, exist_ok=True)
+              create_hams_icon(os.path.join(p, "ic_launcher.png"), sz)
+          PYEOF
+
+          # 2. إضافة المكتبات اللازمة للصوت والإشعارات والأذونات والأيقونة
+          cat << 'EOF' > pubspec.yaml
+          name: hams_app
+          description: "هَمْس | Hams - رفيقك للتذكير بالصلاة على النبي ﷺ"
+          publish_to: 'none'
+          version: 2.0.0+2
+
+          environment:
+            sdk: '>=3.2.0 <4.0.0'
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            shared_preferences: ^2.2.3
+            flutter_tts: ^4.0.2
+            flutter_local_notifications: ^17.2.1
+            permission_handler: ^11.3.1
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_launcher_icons: ^0.13.1
+
+          flutter_launcher_icons:
+            android: true
+            ios: true
+            image_path: "assets/icon/app_icon.png"
+            adaptive_icon_background: "#065F46"
+            adaptive_icon_foreground: "assets/icon/app_icon.png"
+
+          flutter:
+            uses-material-design: true
+          EOF
+
+          # 3. تحديث AndroidManifest.xml بجميع الأذونات المطلوبة واسم التطبيق
+          cat << 'EOF' > android/app/src/main/AndroidManifest.xml
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+              <uses-permission android:name="android.permission.VIBRATE" />
+              <uses-permission android:name="android.permission.WAKE_LOCK" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+              <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+              <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.TTS_SERVICE" />
+                  </intent>
+              </queries>
+
+              <application
+                  android:label="هَمْس | Hams"
+                  android:name="${applicationName}"
+                  android:icon="@mipmap/ic_launcher">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTop"
+                      android:theme="@style/LaunchTheme"
+                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+                      android:hardwareAccelerated="true"
+                      android:windowSoftInputMode="adjustResize">
+                      <meta-data
+                        android:name="io.flutter.embedding.android.NormalTheme"
+                        android:resource="@style/NormalTheme" />
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+                  <meta-data
+                      android:name="flutterEmbedding"
+                      android:value="2" />
+              </application>
+          </manifest>
+          EOF
+
+          # 4. كتابة الكود الكامل مع Splash Screen + عداد يبدأ من صفر + اختيار عشوائي + صوت ناطق + إشعارات وأذونات
           cat << 'EOF' > lib/main.dart
           import 'dart:async';
+          import 'dart:math';
           import 'package:flutter/material.dart';
           import 'package:flutter/services.dart';
           import 'package:shared_preferences/shared_preferences.dart';
+          import 'package:flutter_tts/flutter_tts.dart';
+          import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+          import 'package:permission_handler/permission_handler.dart';
 
-          void main() {
+          final FlutterLocalNotificationsPlugin localNotifications =
+              FlutterLocalNotificationsPlugin();
+
+          Future<void> main() async {
             WidgetsFlutterBinding.ensureInitialized();
+            const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+            const initSettings = InitializationSettings(android: androidInit);
+            await localNotifications.initialize(initSettings);
             runApp(const HamsApp());
           }
 
@@ -51,12 +189,131 @@ jobs:
                 ),
                 home: const Directionality(
                   textDirection: TextDirection.rtl,
-                  child: HamsMainScreen(),
+                  child: HamsSplashScreen(),
                 ),
               );
             }
           }
 
+          // ===================================================================
+          // شاشة البداية الترحيبية (Splash Screen)
+          // ===================================================================
+          class HamsSplashScreen extends StatefulWidget {
+            const HamsSplashScreen({super.key});
+
+            @override
+            State<HamsSplashScreen> createState() => _HamsSplashScreenState();
+          }
+
+          class _HamsSplashScreenState extends State<HamsSplashScreen>
+              with SingleTickerProviderStateMixin {
+            late AnimationController _animController;
+            late Animation<double> _fadeAnim;
+
+            @override
+            void initState() {
+              super.initState();
+              _animController = AnimationController(
+                vsync: this,
+                duration: const Duration(milliseconds: 1200),
+              );
+              _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeIn);
+              _animController.forward();
+
+              Timer(const Duration(seconds: 3), () {
+                if (mounted) {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (_) => const Directionality(
+                        textDirection: TextDirection.rtl,
+                        child: HamsMainScreen(),
+                      ),
+                    ),
+                  );
+                }
+              });
+            }
+
+            @override
+            void dispose() {
+              _animController.dispose();
+              super.dispose();
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                body: Container(
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF044E38), Color(0xFF065F46), Color(0xFF047857)],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                  child: FadeTransition(
+                    opacity: _fadeAnim,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 115,
+                          height: 115,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.12),
+                            border: Border.all(color: const Color(0xFFF59E0B), width: 3),
+                          ),
+                          child: const Icon(
+                            Icons.mosque,
+                            size: 62,
+                            color: Color(0xFFFBBF24),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        const Text(
+                          'هَمْس | Hams',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 34,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 32),
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            '« رَفِيقُكَ الدَّائِمُ لِلتَّذْكِيرِ بِالصَّلَاةِ عَلَى النَّبِيِّ ﷺ »',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xFFFEF3C7),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 45),
+                        const CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+
+          // ===================================================================
+          // الشاشة الرئيسية للتطبيق
+          // ===================================================================
           class HamsMainScreen extends StatefulWidget {
             const HamsMainScreen({super.key});
 
@@ -65,57 +322,130 @@ jobs:
           }
 
           class _HamsMainScreenState extends State<HamsMainScreen> {
+            final FlutterTts _tts = FlutterTts();
+            final Random _random = Random();
+
             int _currentIndex = 0;
             bool _isEnabled = true;
+            bool _notificationsEnabled = true;
+            bool _randomMode = true;
             bool _fridayDouble = true;
             bool _quietHours = false;
             int _intervalMinutes = 15;
-            int _selectedFormula = 0;
+            double _volume = 1.0;
+
+            // العدادات تبدأ من الصفر تماماً عند التثبيت الجديد
             int _todayCount = 0;
             int _tasbihCount = 0;
             int _totalCount = 0;
-            Timer? _periodicTimer;
 
-            final List<String> _formulas = [
-              'صَلِّ عَلَى مُحَمَّدٍ ﷺ',
-              'اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ',
-              'صَلُّوا عَلَى الحَبِيبِ مُحَمَّدٍ ﷺ',
-              'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ',
-              'أَسْتَغْفِرُ اللَّهَ وَأَتُوبُ إِلَيْهِ',
-              'سُبْحَانَ اللَّهِ وَبِحَمْدِهِ، سُبْحَانَ اللَّهِ العَظِيمِ',
+            // قائمة الأذكار وتحديد جميع الأذكار افتراضياً ليعمل العشوائي عليها كلها
+            final List<Map<String, String>> _adhkarList = [
+              {
+                'display': 'صَلِّ عَلَى مُحَمَّدٍ ﷺ',
+                'speak': 'صل على محمد، اللهم صل وسلم على سيدنا محمد',
+              },
+              {
+                'display': 'اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ',
+                'speak': 'اللهم صل وسلم على نبينا محمد',
+              },
+              {
+                'display': 'صَلُّوا عَلَى الحَبِيبِ مُحَمَّدٍ ﷺ',
+                'speak': 'صلوا على الحبيب محمد صلى الله عليه وسلم',
+              },
+              {
+                'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ',
+                'speak': 'اللهم صل على محمد وعلى آل محمد',
+              },
+              {
+                'display': 'أَسْتَغْفِرُ اللَّهَ وَأَتُوبُ إِلَيْهِ',
+                'speak': 'أستغفر الله العظيم وأتوب إليه',
+              },
+              {
+                'display': 'سُبْحَانَ اللَّهِ وَبِحَمْدِهِ، سُبْحَانَ اللَّهِ العَظِيمِ',
+                'speak': 'سبحان الله وبحمده، سبحان الله العظيم',
+              },
             ];
+
+            Set<int> _selectedIndices = {0, 1, 2, 3, 4, 5};
+            PermissionStatus _notifPermStatus = PermissionStatus.denied;
+            PermissionStatus _batteryPermStatus = PermissionStatus.denied;
+            Timer? _periodicTimer;
 
             @override
             void initState() {
               super.initState();
+              _initAudioEngine();
               _loadData();
+              _checkAndRequestPermissionsOnStart();
               _restartTimer();
+            }
+
+            Future<void> _initAudioEngine() async {
+              try {
+                await _tts.setLanguage('ar-SA');
+                await _tts.setSpeechRate(0.45);
+                await _tts.setPitch(1.0);
+                await _tts.setVolume(_volume);
+              } catch (_) {}
+            }
+
+            Future<void> _checkAndRequestPermissionsOnStart() async {
+              final notifStatus = await Permission.notification.status;
+              final battStatus = await Permission.ignoreBatteryOptimizations.status;
+              if (mounted) {
+                setState(() {
+                  _notifPermStatus = notifStatus;
+                  _batteryPermStatus = battStatus;
+                });
+              }
+              if (!notifStatus.isGranted) {
+                final req = await Permission.notification.request();
+                if (mounted) setState(() => _notifPermStatus = req);
+              }
             }
 
             Future<void> _loadData() async {
               final prefs = await SharedPreferences.getInstance();
+              final savedList = prefs.getStringList('selectedIndices');
               setState(() {
                 _isEnabled = prefs.getBool('enabled') ?? true;
+                _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
+                _randomMode = prefs.getBool('randomMode') ?? true;
                 _fridayDouble = prefs.getBool('fridayDouble') ?? true;
                 _quietHours = prefs.getBool('quietHours') ?? false;
                 _intervalMinutes = prefs.getInt('interval') ?? 15;
-                _selectedFormula = prefs.getInt('formula') ?? 0;
-                _todayCount = prefs.getInt('todayCount') ?? 24;
-                _tasbihCount = prefs.getInt('tasbihCount') ?? 0;
-                _totalCount = prefs.getInt('totalCount') ?? 150;
+                _volume = prefs.getDouble('volume') ?? 1.0;
+
+                // تصفير العدادات افتراضياً إلى 0
+                _todayCount = prefs.getInt('todayCount_v2') ?? 0;
+                _tasbihCount = prefs.getInt('tasbihCount_v2') ?? 0;
+                _totalCount = prefs.getInt('totalCount_v2') ?? 0;
+
+                if (savedList != null && savedList.isNotEmpty) {
+                  _selectedIndices = savedList.map((e) => int.tryParse(e) ?? 0).toSet();
+                } else {
+                  _selectedIndices = {0, 1, 2, 3, 4, 5};
+                }
               });
             }
 
             Future<void> _saveData() async {
               final prefs = await SharedPreferences.getInstance();
               await prefs.setBool('enabled', _isEnabled);
+              await prefs.setBool('notificationsEnabled', _notificationsEnabled);
+              await prefs.setBool('randomMode', _randomMode);
               await prefs.setBool('fridayDouble', _fridayDouble);
               await prefs.setBool('quietHours', _quietHours);
               await prefs.setInt('interval', _intervalMinutes);
-              await prefs.setInt('formula', _selectedFormula);
-              await prefs.setInt('todayCount', _todayCount);
-              await prefs.setInt('tasbihCount', _tasbihCount);
-              await prefs.setInt('totalCount', _totalCount);
+              await prefs.setDouble('volume', _volume);
+              await prefs.setInt('todayCount_v2', _todayCount);
+              await prefs.setInt('tasbihCount_v2', _tasbihCount);
+              await prefs.setInt('totalCount_v2', _totalCount);
+              await prefs.setStringList(
+                'selectedIndices',
+                _selectedIndices.map((e) => e.toString()).toList(),
+              );
             }
 
             void _restartTimer() {
@@ -126,28 +456,56 @@ jobs:
                   ? (_intervalMinutes ~/ 2).clamp(1, 60)
                   : _intervalMinutes;
               _periodicTimer = Timer.periodic(Duration(minutes: effectiveMins), (_) {
-                _triggerSalawat();
+                _triggerRandomSalawat();
               });
             }
 
-            void _triggerSalawat() {
-              if (_quietHours) {
-                final h = DateTime.now().hour;
-                if (h >= 23 || h < 6) return;
-              }
-              SystemSound.play(SystemSoundType.alert);
+            Future<void> _speakDhikr(int index, {bool showNotif = true}) async {
+              final item = _adhkarList[index];
               HapticFeedback.mediumImpact();
+
+              // نطق الذكر بالصوت العربي الواضح
+              try {
+                await _tts.stop();
+                await _tts.setVolume(_volume);
+                await _tts.setLanguage('ar');
+                await _tts.speak(item['speak']!);
+              } catch (_) {
+                SystemSound.play(SystemSoundType.alert);
+              }
+
               setState(() {
                 _todayCount++;
                 _totalCount++;
               });
-              _saveData();
+              await _saveData();
+
+              // إرسال إشعار أندرويد حقيقي إذا كانت الإشعارات مفعلة
+              if (showNotif && _notificationsEnabled) {
+                const androidDetails = AndroidNotificationDetails(
+                  'hams_channel_v2',
+                  'تذكيرات هَمْس الصوتية',
+                  channelDescription: 'إشعارات التذكير بالصلاة على النبي ﷺ',
+                  importance: Importance.high,
+                  priority: Priority.high,
+                  playSound: true,
+                );
+                const details = NotificationDetails(android: androidDetails);
+                await localNotifications.show(
+                  DateTime.now().millisecondsSinceEpoch ~/ 1000,
+                  'هَمْس | Hams 🕌',
+                  item['display']!,
+                  details,
+                );
+              }
+
               if (mounted) {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     backgroundColor: const Color(0xFF065F46),
                     content: Text(
-                      '🕌 تذكير هَمْس: ${_formulas[_selectedFormula]}',
+                      '🔊 ${item['display']}',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                     ),
                     duration: const Duration(seconds: 3),
@@ -156,9 +514,24 @@ jobs:
               }
             }
 
+            Future<void> _triggerRandomSalawat() async {
+              if (_quietHours) {
+                final h = DateTime.now().hour;
+                if (h >= 23 || h < 6) return;
+              }
+              final pool = _selectedIndices.isNotEmpty
+                  ? _selectedIndices.toList()
+                  : [0, 1, 2, 3, 4, 5];
+              final chosenIndex = _randomMode
+                  ? pool[_random.nextInt(pool.length)]
+                  : pool.first;
+              await _speakDhikr(chosenIndex, showNotif: true);
+            }
+
             @override
             void dispose() {
               _periodicTimer?.cancel();
+              _tts.stop();
               super.dispose();
             }
 
@@ -167,7 +540,7 @@ jobs:
               final pages = [
                 _buildHomeTab(),
                 _buildTasbihTab(),
-                _buildSettingsTab(),
+                _buildSettingsAndPermissionsTab(),
                 _buildPrivacyTab(),
               ];
               return Scaffold(
@@ -175,8 +548,10 @@ jobs:
                 appBar: AppBar(
                   backgroundColor: const Color(0xFF065F46),
                   foregroundColor: Colors.white,
-                  title: const Text('هَمْس | Hams - الصلاة على النبي ﷺ',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  title: const Text(
+                    'هَمْس | Hams - الصلاة على النبي ﷺ',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                  ),
                   centerTitle: true,
                 ),
                 body: pages[_currentIndex],
@@ -186,7 +561,7 @@ jobs:
                   destinations: const [
                     NavigationDestination(icon: Icon(Icons.mosque), label: 'الرئيسية'),
                     NavigationDestination(icon: Icon(Icons.touch_app), label: 'المسبحة'),
-                    NavigationDestination(icon: Icon(Icons.settings), label: 'الإعدادات'),
+                    NavigationDestination(icon: Icon(Icons.settings), label: 'الإعدادات والأذونات'),
                     NavigationDestination(icon: Icon(Icons.privacy_tip), label: 'الخصوصية'),
                   ],
                 ),
@@ -200,9 +575,11 @@ jobs:
                   Card(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     child: SwitchListTile(
-                      title: const Text('تفعيل التذكير التلقائي',
+                      title: const Text('تفعيل التذكير الصوتي التلقائي',
                           style: TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(_isEnabled ? 'نشط ويعمل حالياً' : 'متوقف مؤقتاً'),
+                      subtitle: Text(_isEnabled
+                          ? 'نشط ويعمل عشوائياً بين الأذكار المحددة'
+                          : 'متوقف مؤقتاً'),
                       value: _isEnabled,
                       activeColor: const Color(0xFF065F46),
                       onChanged: (val) {
@@ -212,14 +589,14 @@ jobs:
                       },
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   Row(
                     children: [
                       Expanded(
                         child: Card(
                           color: const Color(0xFFECFDF5),
                           child: Padding(
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(14),
                             child: Column(
                               children: [
                                 Text('$_todayCount',
@@ -238,7 +615,7 @@ jobs:
                         child: Card(
                           color: const Color(0xFFFEF3C7),
                           child: Padding(
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(14),
                             child: Column(
                               children: [
                                 Text('$_totalCount',
@@ -254,37 +631,92 @@ jobs:
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  const Text('اختر صيغة التذكير:',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 8),
-                  ...List.generate(_formulas.length, (i) {
+                  const SizedBox(height: 12),
+                  Card(
+                    color: const Color(0xFFF0FDF4),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      side: const BorderSide(color: Color(0xFF065F46)),
+                    ),
+                    child: SwitchListTile(
+                      title: const Text('🎲 التشغيل العشوائي للأذكار',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: const Text(
+                          'ينطق ذكراً مختلفاً في كل مرة من الأذكار المحددة بالأسفل'),
+                      value: _randomMode,
+                      activeColor: const Color(0xFF065F46),
+                      onChanged: (val) {
+                        setState(() => _randomMode = val);
+                        _saveData();
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('حدد الأذكار المشمولة (أو اضغط 🔊 للسماع):',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _selectedIndices = {0, 1, 2, 3, 4, 5};
+                          });
+                          _saveData();
+                        },
+                        child: const Text('تحديد الكل'),
+                      ),
+                    ],
+                  ),
+                  ...List.generate(_adhkarList.length, (i) {
+                    final isChecked = _selectedIndices.contains(i);
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
-                      child: RadioListTile<int>(
-                        value: i,
-                        groupValue: _selectedFormula,
-                        activeColor: const Color(0xFF065F46),
-                        title: Text(_formulas[i],
-                            style: const TextStyle(fontWeight: FontWeight.bold)),
-                        secondary: IconButton(
-                          icon: const Icon(Icons.play_circle_fill,
-                              color: Color(0xFF065F46), size: 30),
-                          onPressed: () {
-                            setState(() => _selectedFormula = i);
-                            _triggerSalawat();
+                      child: ListTile(
+                        leading: Checkbox(
+                          value: isChecked,
+                          activeColor: const Color(0xFF065F46),
+                          onChanged: (checked) {
+                            setState(() {
+                              if (checked == true) {
+                                _selectedIndices.add(i);
+                              } else if (_selectedIndices.length > 1) {
+                                _selectedIndices.remove(i);
+                              }
+                            });
+                            _saveData();
                           },
                         ),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() => _selectedFormula = val);
-                            _saveData();
-                            _triggerSalawat();
-                          }
-                        },
+                        title: Text(
+                          _adhkarList[i]['display']!,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        subtitle: const Text('اضغط هنا أو على السماعة لسماع الصوت الآن',
+                            style: TextStyle(fontSize: 11)),
+                        onTap: () => _speakDhikr(i, showNotif: false),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.volume_up,
+                              color: Color(0xFF065F46), size: 28),
+                          onPressed: () => _speakDhikr(i, showNotif: false),
+                        ),
                       ),
                     );
                   }),
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF065F46),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: _triggerRandomSalawat,
+                    icon: const Icon(Icons.shuffle),
+                    label: const Text('تشغيل ذكر عشوائي بالصوت والإشعار الآن',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
                 ],
               );
             }
@@ -315,7 +747,8 @@ jobs:
                           color: const Color(0xFF065F46),
                           border: Border.all(color: const Color(0xFFA7F3D0), width: 8),
                           boxShadow: const [
-                            BoxShadow(color: Colors.black26, blurRadius: 16, offset: Offset(0, 8))
+                            BoxShadow(
+                                color: Colors.black26, blurRadius: 16, offset: Offset(0, 8))
                           ],
                         ),
                         child: Column(
@@ -333,23 +766,93 @@ jobs:
                       ),
                     ),
                     const SizedBox(height: 24),
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        setState(() => _tasbihCount = 0);
-                        _saveData();
-                      },
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('تصفير عداد المسبحة'),
-                    )
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() => _tasbihCount = 0);
+                            _saveData();
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('تصفير المسبحة'),
+                        ),
+                        const SizedBox(width: 12),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _todayCount = 0;
+                              _totalCount = 0;
+                              _tasbihCount = 0;
+                            });
+                            _saveData();
+                          },
+                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          label: const Text('تصفير جميع العدادات'),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               );
             }
 
-            Widget _buildSettingsTab() {
+            Widget _buildSettingsAndPermissionsTab() {
+              final isNotifGranted = _notifPermStatus.isGranted;
+              final isBattGranted = _batteryPermStatus.isGranted;
+
               return ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  const Text('🔔 الإشعارات والصوت:',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Card(
+                    child: SwitchListTile(
+                      secondary: const Icon(Icons.notifications_active,
+                          color: Color(0xFF065F46)),
+                      title: const Text('تفعيل إشعارات التذكير',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text(_notificationsEnabled
+                          ? 'الإشعارات مفعلة وتظهر مع كل تذكير'
+                          : 'الإشعارات متوقفة'),
+                      value: _notificationsEnabled,
+                      activeColor: const Color(0xFF065F46),
+                      onChanged: (val) async {
+                        if (val && !_notifPermStatus.isGranted) {
+                          final status = await Permission.notification.request();
+                          setState(() => _notifPermStatus = status);
+                        }
+                        setState(() => _notificationsEnabled = val);
+                        await _saveData();
+                        if (val) {
+                          await _triggerRandomSalawat();
+                        }
+                      },
+                    ),
+                  ),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('مستوى صوت القارئ: ${(_volume * 100).round()}%',
+                              style: const TextStyle(fontWeight: FontWeight.bold)),
+                          Slider(
+                            value: _volume,
+                            min: 0.1,
+                            max: 1.0,
+                            activeColor: const Color(0xFF065F46),
+                            onChanged: (val) {
+                              setState(() => _volume = val);
+                              _saveData();
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   Card(
                     child: ListTile(
                       title: const Text('معدل تكرار التذكير'),
@@ -387,13 +890,71 @@ jobs:
                   Card(
                     child: SwitchListTile(
                       title: const Text('أوقات الهدوء (11 مساءً - 6 صباحاً)'),
-                      subtitle: const Text('كتم الصوت تلقائياً وقت النوم'),
                       value: _quietHours,
                       activeColor: const Color(0xFF065F46),
                       onChanged: (val) {
                         setState(() => _quietHours = val);
                         _saveData();
                       },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('🛡️ أذونات الهاتف (لضمان العمل في الخلفية):',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Card(
+                    child: ListTile(
+                      leading: Icon(
+                        isNotifGranted ? Icons.check_circle : Icons.warning_amber_rounded,
+                        color: isNotifGranted ? Colors.green : Colors.orange,
+                        size: 30,
+                      ),
+                      title: const Text('إذن عرض الإشعارات والتنبيهات',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text(isNotifGranted
+                          ? 'مفعل بنجاح ✅'
+                          : 'اضغط هنا لمنح إذن الإشعارات'),
+                      trailing: ElevatedButton(
+                        onPressed: () async {
+                          final req = await Permission.notification.request();
+                          if (req.isPermanentlyDenied) {
+                            await openAppSettings();
+                          }
+                          setState(() => _notifPermStatus = req);
+                        },
+                        child: Text(isNotifGranted ? 'مفعل' : 'تفعيل الآن'),
+                      ),
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
+                      leading: Icon(
+                        isBattGranted ? Icons.battery_charging_full : Icons.battery_alert,
+                        color: isBattGranted ? Colors.green : Colors.orange,
+                        size: 30,
+                      ),
+                      title: const Text('إذن العمل في الخلفية (تجاهل توفير البطارية)',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text(isBattGranted
+                          ? 'مفعل بنجاح ✅'
+                          : 'اضغط هنا للسماح للتطبيق بالعمل دون إيقاف'),
+                      trailing: ElevatedButton(
+                        onPressed: () async {
+                          final req =
+                              await Permission.ignoreBatteryOptimizations.request();
+                          setState(() => _batteryPermStatus = req);
+                        },
+                        child: Text(isBattGranted ? 'مفعل' : 'تفعيل الآن'),
+                      ),
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.app_settings_alt, color: Color(0xFF065F46)),
+                      title: const Text('فتح إعدادات أذونات التطبيق في الهاتف'),
+                      subtitle: const Text('للتحكم اليدوي بجميع أذونات النظام'),
+                      trailing: const Icon(Icons.open_in_new),
+                      onTap: () => openAppSettings(),
                     ),
                   ),
                 ],
@@ -416,7 +977,7 @@ jobs:
                           Text(
                             '1. عدم جمع البيانات: تطبيق هَمْس يعمل محلياً بالكامل على جهازك ولا يجمع أو يشارك أي بيانات شخصية أو موقع جغرافي.\n\n'
                             '2. التخزين المحلي: جميع إحصائيات الصلوات والمسبحة والإعدادات تُحفظ داخل ذاكرة هاتفك فقط.\n\n'
-                            '3. التنبيهات الصوتية: يعمل التطبيق لتذكيرك بالصلاة على النبي ﷺ وفق الأوقات التي تحددها بنفسك.',
+                            '3. الأذونات: يطلب التطبيق إذن الإشعارات والعمل في الخلفية فقط لضمان تذكيرك بالصلاة على النبي ﷺ في الأوقات المحددة.',
                             style: TextStyle(height: 1.6, fontSize: 14),
                           ),
                         ],
@@ -429,11 +990,13 @@ jobs:
           }
           EOF
 
-      - name: Build APK
-        run: flutter build apk --release
+          # 5. توليد أيقونات اللانشر وبناء الـ APK النهائي
+          flutter pub get
+          dart run flutter_launcher_icons
+          flutter build apk --release
 
-      - name: Upload APK Artifact
+      - name: Upload Updated APK v2
         uses: actions/upload-artifact@v4
         with:
-          name: Hams-Ready-APK
+          name: Hams-Ready-APK-v2
           path: build/app/outputs/flutter-apk/app-release.apk
