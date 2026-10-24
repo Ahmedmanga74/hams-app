@@ -1,0 +1,439 @@
+name: Build Hams APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build_apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Create Hams Flutter Project and Inject Code
+        run: |
+          flutter create --org com.hams.salawat --project-name hams_app .
+          flutter pub add shared_preferences
+          
+          sed -i 's/android:label="hams_app"/android:label="هَمْس | Hams"/g' android/app/src/main/AndroidManifest.xml
+
+          cat << 'EOF' > lib/main.dart
+          import 'dart:async';
+          import 'package:flutter/material.dart';
+          import 'package:flutter/services.dart';
+          import 'package:shared_preferences/shared_preferences.dart';
+
+          void main() {
+            WidgetsFlutterBinding.ensureInitialized();
+            runApp(const HamsApp());
+          }
+
+          class HamsApp extends StatelessWidget {
+            const HamsApp({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              return MaterialApp(
+                debugShowCheckedModeBanner: false,
+                title: 'هَمْس | Hams',
+                theme: ThemeData(
+                  colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF065F46)),
+                  useMaterial3: true,
+                ),
+                home: const Directionality(
+                  textDirection: TextDirection.rtl,
+                  child: HamsMainScreen(),
+                ),
+              );
+            }
+          }
+
+          class HamsMainScreen extends StatefulWidget {
+            const HamsMainScreen({super.key});
+
+            @override
+            State<HamsMainScreen> createState() => _HamsMainScreenState();
+          }
+
+          class _HamsMainScreenState extends State<HamsMainScreen> {
+            int _currentIndex = 0;
+            bool _isEnabled = true;
+            bool _fridayDouble = true;
+            bool _quietHours = false;
+            int _intervalMinutes = 15;
+            int _selectedFormula = 0;
+            int _todayCount = 0;
+            int _tasbihCount = 0;
+            int _totalCount = 0;
+            Timer? _periodicTimer;
+
+            final List<String> _formulas = [
+              'صَلِّ عَلَى مُحَمَّدٍ ﷺ',
+              'اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ',
+              'صَلُّوا عَلَى الحَبِيبِ مُحَمَّدٍ ﷺ',
+              'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ',
+              'أَسْتَغْفِرُ اللَّهَ وَأَتُوبُ إِلَيْهِ',
+              'سُبْحَانَ اللَّهِ وَبِحَمْدِهِ، سُبْحَانَ اللَّهِ العَظِيمِ',
+            ];
+
+            @override
+            void initState() {
+              super.initState();
+              _loadData();
+              _restartTimer();
+            }
+
+            Future<void> _loadData() async {
+              final prefs = await SharedPreferences.getInstance();
+              setState(() {
+                _isEnabled = prefs.getBool('enabled') ?? true;
+                _fridayDouble = prefs.getBool('fridayDouble') ?? true;
+                _quietHours = prefs.getBool('quietHours') ?? false;
+                _intervalMinutes = prefs.getInt('interval') ?? 15;
+                _selectedFormula = prefs.getInt('formula') ?? 0;
+                _todayCount = prefs.getInt('todayCount') ?? 24;
+                _tasbihCount = prefs.getInt('tasbihCount') ?? 0;
+                _totalCount = prefs.getInt('totalCount') ?? 150;
+              });
+            }
+
+            Future<void> _saveData() async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('enabled', _isEnabled);
+              await prefs.setBool('fridayDouble', _fridayDouble);
+              await prefs.setBool('quietHours', _quietHours);
+              await prefs.setInt('interval', _intervalMinutes);
+              await prefs.setInt('formula', _selectedFormula);
+              await prefs.setInt('todayCount', _todayCount);
+              await prefs.setInt('tasbihCount', _tasbihCount);
+              await prefs.setInt('totalCount', _totalCount);
+            }
+
+            void _restartTimer() {
+              _periodicTimer?.cancel();
+              if (!_isEnabled) return;
+              final isFriday = DateTime.now().weekday == DateTime.friday;
+              final effectiveMins = (_fridayDouble && isFriday)
+                  ? (_intervalMinutes ~/ 2).clamp(1, 60)
+                  : _intervalMinutes;
+              _periodicTimer = Timer.periodic(Duration(minutes: effectiveMins), (_) {
+                _triggerSalawat();
+              });
+            }
+
+            void _triggerSalawat() {
+              if (_quietHours) {
+                final h = DateTime.now().hour;
+                if (h >= 23 || h < 6) return;
+              }
+              SystemSound.play(SystemSoundType.alert);
+              HapticFeedback.mediumImpact();
+              setState(() {
+                _todayCount++;
+                _totalCount++;
+              });
+              _saveData();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    backgroundColor: const Color(0xFF065F46),
+                    content: Text(
+                      '🕌 تذكير هَمْس: ${_formulas[_selectedFormula]}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              }
+            }
+
+            @override
+            void dispose() {
+              _periodicTimer?.cancel();
+              super.dispose();
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              final pages = [
+                _buildHomeTab(),
+                _buildTasbihTab(),
+                _buildSettingsTab(),
+                _buildPrivacyTab(),
+              ];
+              return Scaffold(
+                backgroundColor: const Color(0xFFF4F7F5),
+                appBar: AppBar(
+                  backgroundColor: const Color(0xFF065F46),
+                  foregroundColor: Colors.white,
+                  title: const Text('هَمْس | Hams - الصلاة على النبي ﷺ',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  centerTitle: true,
+                ),
+                body: pages[_currentIndex],
+                bottomNavigationBar: NavigationBar(
+                  selectedIndex: _currentIndex,
+                  onDestinationSelected: (idx) => setState(() => _currentIndex = idx),
+                  destinations: const [
+                    NavigationDestination(icon: Icon(Icons.mosque), label: 'الرئيسية'),
+                    NavigationDestination(icon: Icon(Icons.touch_app), label: 'المسبحة'),
+                    NavigationDestination(icon: Icon(Icons.settings), label: 'الإعدادات'),
+                    NavigationDestination(icon: Icon(Icons.privacy_tip), label: 'الخصوصية'),
+                  ],
+                ),
+              );
+            }
+
+            Widget _buildHomeTab() {
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Card(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: SwitchListTile(
+                      title: const Text('تفعيل التذكير التلقائي',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text(_isEnabled ? 'نشط ويعمل حالياً' : 'متوقف مؤقتاً'),
+                      value: _isEnabled,
+                      activeColor: const Color(0xFF065F46),
+                      onChanged: (val) {
+                        setState(() => _isEnabled = val);
+                        _saveData();
+                        _restartTimer();
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Card(
+                          color: const Color(0xFFECFDF5),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                Text('$_todayCount',
+                                    style: const TextStyle(
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF065F46))),
+                                const Text('صلوات اليوم'),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Card(
+                          color: const Color(0xFFFEF3C7),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                Text('$_totalCount',
+                                    style: const TextStyle(
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF92400E))),
+                                const Text('الإجمالي الكلي'),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('اختر صيغة التذكير:',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 8),
+                  ...List.generate(_formulas.length, (i) {
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: RadioListTile<int>(
+                        value: i,
+                        groupValue: _selectedFormula,
+                        activeColor: const Color(0xFF065F46),
+                        title: Text(_formulas[i],
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                        secondary: IconButton(
+                          icon: const Icon(Icons.play_circle_fill,
+                              color: Color(0xFF065F46), size: 30),
+                          onPressed: () {
+                            setState(() => _selectedFormula = i);
+                            _triggerSalawat();
+                          },
+                        ),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _selectedFormula = val);
+                            _saveData();
+                            _triggerSalawat();
+                          }
+                        },
+                      ),
+                    );
+                  }),
+                ],
+              );
+            }
+
+            Widget _buildTasbihTab() {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text('اضغط على الدائرة للصلاة على النبي ﷺ',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 24),
+                    GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        setState(() {
+                          _tasbihCount++;
+                          _todayCount++;
+                          _totalCount++;
+                        });
+                        _saveData();
+                      },
+                      child: Container(
+                        width: 210,
+                        height: 210,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF065F46),
+                          border: Border.all(color: const Color(0xFFA7F3D0), width: 8),
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black26, blurRadius: 16, offset: Offset(0, 8))
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text('$_tasbihCount',
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.bold)),
+                            const Text('صَلِّ عَلَى مُحَمَّدٍ ﷺ',
+                                style: TextStyle(color: Colors.white70, fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() => _tasbihCount = 0);
+                        _saveData();
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('تصفير عداد المسبحة'),
+                    )
+                  ],
+                ),
+              );
+            }
+
+            Widget _buildSettingsTab() {
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Card(
+                    child: ListTile(
+                      title: const Text('معدل تكرار التذكير'),
+                      trailing: DropdownButton<int>(
+                        value: _intervalMinutes,
+                        items: const [
+                          DropdownMenuItem(value: 2, child: Text('كل دقيقتين')),
+                          DropdownMenuItem(value: 5, child: Text('كل 5 دقائق')),
+                          DropdownMenuItem(value: 15, child: Text('كل 15 دقيقة')),
+                          DropdownMenuItem(value: 30, child: Text('كل 30 دقيقة')),
+                          DropdownMenuItem(value: 60, child: Text('كل ساعة')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _intervalMinutes = val);
+                            _saveData();
+                            _restartTimer();
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  Card(
+                    child: SwitchListTile(
+                      title: const Text('مضاعفة التذكير يوم الجمعة'),
+                      value: _fridayDouble,
+                      activeColor: const Color(0xFF065F46),
+                      onChanged: (val) {
+                        setState(() => _fridayDouble = val);
+                        _saveData();
+                        _restartTimer();
+                      },
+                    ),
+                  ),
+                  Card(
+                    child: SwitchListTile(
+                      title: const Text('أوقات الهدوء (11 مساءً - 6 صباحاً)'),
+                      subtitle: const Text('كتم الصوت تلقائياً وقت النوم'),
+                      value: _quietHours,
+                      activeColor: const Color(0xFF065F46),
+                      onChanged: (val) {
+                        setState(() => _quietHours = val);
+                        _saveData();
+                      },
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            Widget _buildPrivacyTab() {
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: const [
+                  Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('🛡️ سياسة الخصوصية لتطبيق هَمْس | Hams',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                          SizedBox(height: 12),
+                          Text(
+                            '1. عدم جمع البيانات: تطبيق هَمْس يعمل محلياً بالكامل على جهازك ولا يجمع أو يشارك أي بيانات شخصية أو موقع جغرافي.\n\n'
+                            '2. التخزين المحلي: جميع إحصائيات الصلوات والمسبحة والإعدادات تُحفظ داخل ذاكرة هاتفك فقط.\n\n'
+                            '3. التنبيهات الصوتية: يعمل التطبيق لتذكيرك بالصلاة على النبي ﷺ وفق الأوقات التي تحددها بنفسك.',
+                            style: TextStyle(height: 1.6, fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }
+          }
+          EOF
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hams-Ready-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
