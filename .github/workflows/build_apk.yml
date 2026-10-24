@@ -6,7 +6,7 @@ on:
 
 jobs:
   build_apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository Files
         uses: actions/checkout@v4
@@ -30,107 +30,138 @@ jobs:
 
       - name: Create Hams Project & Bundle 12 Real MP3 Files
         run: |
+          # تنظيف المجلد وإنشاء مشروع Flutter سليم
+          rm -rf android ios lib test pubspec.yaml pubspec.lock .metadata
           flutter create --org com.hams.salawat --project-name hams .
 
-          # 1. نقل ملفات الـ MP3 الـ 12 المرفوعة إلى مجلد assets/audio داخل التطبيق
+          # 1. نقل ملفات الـ MP3 الـ 12 المرفوعة إلى مجلد assets/audio
           mkdir -p assets/audio
           cp /tmp/hams_mp3/*.mp3 assets/audio/ 2>/dev/null || true
 
-          # تأمين جميع الملفات من voice1.mp3 إلى voice12.mp3 في حال نقص أي ملف
-          FIRST_MP3=$(ls assets/audio/*.mp3 2>/dev/null | head -n 1 || true)
-          if [ -n "$FIRST_MP3" ]; then
-            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-              if [ ! -f "assets/audio/voice${i}.mp3" ]; then
-                cp "$FIRST_MP3" "assets/audio/voice${i}.mp3"
-              fi
-            done
+          # توليد ملف MP3 صامت صغير احتياطياً فقط إذا لم يكن المستخدم قد رفع ملفات بعد
+          if [ -z "$(ls -A assets/audio/*.mp3 2>/dev/null)" ]; then
+            printf '\xff\xfb\x90\x64\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' > assets/audio/voice1.mp3
           fi
 
-          # 2. توليد أيقونة تطبيق (هَمْس | Hams) واستبدال أيقونة Flutter
-          python3 - << 'PYEOF'
-          import os, struct, zlib
+          FIRST_MP3=$(ls assets/audio/*.mp3 | head -n 1)
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if [ ! -f "assets/audio/voice${i}.mp3" ]; then
+              cp "$FIRST_MP3" "assets/audio/voice${i}.mp3"
+            fi
+          done
+          ls -la assets/audio/
 
-          def create_hams_icon(filename, size=512):
-              raw_data = bytearray()
-              cx, cy = size / 2.0, size / 2.0
-              r_outer = size * 0.34
-              r_inner = size * 0.28
-              cut_x, cut_y = cx - size * 0.10, cy - size * 0.06
-              for y in range(size):
-                  raw_data.append(0)
-                  for x in range(size):
-                      dx, dy = x - cx, y - cy
-                      dist_center = (dx*dx + dy*dy) ** 0.5
-                      if dist_center > size * 0.47:
-                          r, g, b, a = 4, 78, 56, 255
-                      else:
-                          r, g, b, a = 6, 95, 70, 255
-                      d1 = ((x - cx)**2 + (y - cy)**2) ** 0.5
-                      d2 = ((x - cut_x)**2 + (y - cut_y)**2) ** 0.5
-                      if d1 < r_outer and d2 > r_inner:
-                          r, g, b, a = 245, 158, 11, 255
-                      ds = ((x - (cx - size*0.14))**2 + (y - (cy - size*0.12))**2) ** 0.5
-                      if ds < size * 0.045:
-                          r, g, b, a = 251, 191, 36, 255
-                      raw_data.extend([r, g, b, a])
+          # 2. توليد أيقونة تطبيق (هَمْس | Hams) بلغة Dart مباشرة لتجنب أي أخطاء مسافات في Python
+          cat << 'DARTEOF' > generate_icon.dart
+          import 'dart:io';
+          import 'dart:typed_data';
+          import 'dart:math';
 
-              def png_chunk(chunk_type, data):
-                  return (struct.pack(">I", len(data)) + chunk_type + data +
-                          struct.pack(">I", zlib.crc32(chunk_type + data) & 0xffffffff))
+          int _crc32(List<int> data) {
+            int crc = 0xFFFFFFFF;
+            for (final b in data) {
+              crc ^= b;
+              for (int i = 0; i < 8; i++) {
+                crc = (crc & 1) != 0 ? (crc >>> 1) ^ 0xEDB88320 : (crc >>> 1);
+              }
+            }
+            return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF;
+          }
 
-              ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
-              idat = zlib.compress(bytes(raw_data), 9)
-              png_bytes = b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", ihdr) + png_chunk(b"IDAT", idat) + png_chunk(b"IEND", b"")
-              with open(filename, "wb") as f:
-                  f.write(png_bytes)
+          List<int> _chunk(String type, List<int> data) {
+            final out = BytesBuilder();
+            final len = ByteData(4)..setUint32(0, data.length, Endian.big);
+            out.add(len.buffer.asUint8List());
+            final tBytes = type.codeUnits;
+            out.add(tBytes);
+            out.add(data);
+            final crcVal = _crc32([...tBytes, ...data]);
+            final crcBytes = ByteData(4)..setUint32(0, crcVal, Endian.big);
+            out.add(crcBytes.buffer.asUint8List());
+            return out.toBytes();
+          }
 
-          os.makedirs("assets/icon", exist_ok=True)
-          create_hams_icon("assets/icon/app_icon.png", 512)
+          void createIcon(String path, int size) {
+            final raw = BytesBuilder();
+            final cx = size / 2.0;
+            final cy = size / 2.0;
+            final rOuter = size * 0.34;
+            final rInner = size * 0.28;
+            final cutX = cx - size * 0.10;
+            final cutY = cy - size * 0.06;
 
-          res_base = "android/app/src/main/res"
-          for folder, sz in [("mipmap-mdpi", 48), ("mipmap-hdpi", 72), ("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144), ("mipmap-xxxhdpi", 192)]:
-              p = os.path.join(res_base, folder)
-              os.makedirs(p, exist_ok=True)
-              create_hams_icon(os.path.join(p, "ic_launcher.png"), sz)
-          PYEOF
+            for (int y = 0; y < size; y++) {
+              raw.addByte(0);
+              for (int x = 0; x < size; x++) {
+                final dx = x - cx;
+                final dy = y - cy;
+                final distCenter = sqrt(dx * dx + dy * dy);
+                int r = 6, g = 95, b = 70, a = 255;
+                if (distCenter > size * 0.46) {
+                  r = 4; g = 78; b = 56;
+                }
+                final d1 = sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
+                final d2 = sqrt((x - cutX) * (x - cutX) + (y - cutY) * (y - cutY));
+                if (d1 < rOuter && d2 > rInner) {
+                  r = 245; g = 158; b = 11;
+                }
+                final ds = sqrt(pow(x - (cx - size * 0.14), 2) + pow(y - (cy - size * 0.12), 2));
+                if (ds < size * 0.045) {
+                  r = 251; g = 191; b = 36;
+                }
+                raw.add([r, g, b, a]);
+              }
+            }
 
-          # 3. إعداد pubspec.yaml باسم المشروع hams
-          cat << 'EOF' > pubspec.yaml
-          name: hams
-          description: "هَمْس | Hams - رفيقك للتذكير بالصلاة على النبي ﷺ"
-          publish_to: 'none'
-          version: 1.0.0+1
+            final ihdr = ByteData(13)
+              ..setUint32(0, size, Endian.big)
+              ..setUint32(4, size, Endian.big)
+              ..setUint8(8, 8)
+              ..setUint8(9, 6)
+              ..setUint8(10, 0)
+              ..setUint8(11, 0)
+              ..setUint8(12, 0);
 
-          environment:
-            sdk: '>=3.2.0 <4.0.0'
+            final compressed = zlib.encode(raw.toBytes());
+            final png = BytesBuilder();
+            png.add([137, 80, 78, 71, 13, 10, 26, 10]);
+            png.add(_chunk('IHDR', ihdr.buffer.asUint8List()));
+            png.add(_chunk('IDAT', compressed));
+            png.add(_chunk('IEND', []));
 
-          dependencies:
-            flutter:
-              sdk: flutter
-            shared_preferences: ^2.2.3
-            audioplayers: ^6.0.0
-            flutter_local_notifications: ^17.2.1
-            permission_handler: ^11.3.1
+            File(path).parent.createSync(recursive: true);
+            File(path).writeAsBytesSync(png.toBytes());
+          }
 
-          dev_dependencies:
-            flutter_test:
-              sdk: flutter
-            flutter_launcher_icons: ^0.13.1
+          void main() {
+            final targets = {
+              'mipmap-mdpi': 48,
+              'mipmap-hdpi': 72,
+              'mipmap-xhdpi': 96,
+              'mipmap-xxhdpi': 144,
+              'mipmap-xxxhdpi': 192,
+            };
+            targets.forEach((folder, sz) {
+              createIcon('android/app/src/main/res/$folder/ic_launcher.png', sz);
+            });
+          }
+          DARTEOF
 
-          flutter_launcher_icons:
-            android: true
-            ios: true
-            image_path: "assets/icon/app_icon.png"
-            adaptive_icon_background: "#065F46"
-            adaptive_icon_foreground: "assets/icon/app_icon.png"
+          dart run generate_icon.dart
+          rm -f generate_icon.dart
+          # حذف مجلد mipmap-anydpi-v26 الافتراضي حتى يقرأ أندرويد أيقونة هَمْس الجديدة مباشرة
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
 
-          flutter:
-            uses-material-design: true
+          # 3. إضافة المكتبات المضمونة في pubspec.yaml بدون أي تعارضات Gradle
+          flutter pub add shared_preferences audioplayers
+
+          cat << 'EOF' >> pubspec.yaml
+
             assets:
               - assets/audio/
           EOF
 
-          # 4. ضبط اسم التطبيق الرسمي في AndroidManifest.xml على (هَمْس | Hams)
+          # 4. ضبط اسم التطبيق الرسمي والأذونات في AndroidManifest.xml
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -139,7 +170,6 @@ jobs:
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
               <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
               <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-              <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
               <application
                   android:label="هَمْس | Hams"
@@ -168,7 +198,86 @@ jobs:
           </manifest>
           EOF
 
-          # 5. كتابة الكود الكامل لتطبيق (هَمْس | Hams) مع الـ 12 صيغة صوتية
+          # 5. إضافة كود Kotlin أصلي في MainActivity لإظهار إشعارات أندرويد وطلب الأذونات بدون مكتبات خارجية معقدة
+          MAIN_KT=$(find android/app/src/main/kotlin -name "MainActivity.kt" | head -n 1)
+          PKG_LINE=$(head -n 1 "$MAIN_KT")
+          cat << EOF > "$MAIN_KT"
+          $PKG_LINE
+
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.content.Context
+          import android.content.Intent
+          import android.net.Uri
+          import android.os.Build
+          import android.provider.Settings
+          import androidx.core.app.ActivityCompat
+          import androidx.core.app.NotificationCompat
+          import io.flutter.embedding.android.FlutterActivity
+          import io.flutter.embedding.engine.FlutterEngine
+          import io.flutter.plugin.common.MethodChannel
+
+          class MainActivity: FlutterActivity() {
+              private val CHANNEL = "com.hams.salawat/native"
+
+              override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+                  super.configureFlutterEngine(flutterEngine)
+                  MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+                      when (call.method) {
+                          "requestNotificationPermission" -> {
+                              if (Build.VERSION.SDK_INT >= 33) {
+                                  ActivityCompat.requestPermissions(this, arrayOf("android.permission.POST_NOTIFICATIONS"), 101)
+                              }
+                              result.success(true)
+                          }
+                          "requestBatteryExemption" -> {
+                              try {
+                                  val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                                  intent.data = Uri.parse("package:\$packageName")
+                                  startActivity(intent)
+                              } catch (e: Exception) {
+                                  val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                  intent.data = Uri.parse("package:\$packageName")
+                                  startActivity(intent)
+                              }
+                              result.success(true)
+                          }
+                          "openAppSettings" -> {
+                              val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                              intent.data = Uri.parse("package:\$packageName")
+                              startActivity(intent)
+                              result.success(true)
+                          }
+                          "showNotification" -> {
+                              val title = call.argument<String>("title") ?: "هَمْس | Hams"
+                              val body = call.argument<String>("body") ?: ""
+                              showNativeNotification(title, body)
+                              result.success(true)
+                          }
+                          else -> result.notImplemented()
+                      }
+                  }
+              }
+
+              private fun showNativeNotification(title: String, body: String) {
+                  val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                  val channelId = "hams_salawat_channel"
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      val channel = NotificationChannel(channelId, "تذكيرات هَمْس", NotificationManager.IMPORTANCE_HIGH)
+                      manager.createNotificationChannel(channel)
+                  }
+                  val builder = NotificationCompat.Builder(this, channelId)
+                      .setSmallIcon(applicationInfo.icon)
+                      .setContentTitle(title)
+                      .setContentText(body)
+                      .setPriority(NotificationCompat.PRIORITY_HIGH)
+                      .setAutoCancel(true)
+                  manager.notify((System.currentTimeMillis() % 10000).toInt(), builder.build())
+              }
+          }
+          EOF
+
+          # 6. كتابة الكود الكامل لتطبيق (هَمْس | Hams) مع الـ 12 صيغة صوتية
           cat << 'EOF' > lib/main.dart
           import 'dart:async';
           import 'dart:math';
@@ -176,17 +285,11 @@ jobs:
           import 'package:flutter/services.dart';
           import 'package:shared_preferences/shared_preferences.dart';
           import 'package:audioplayers/audioplayers.dart';
-          import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-          import 'package:permission_handler/permission_handler.dart';
 
-          final FlutterLocalNotificationsPlugin localNotifications =
-              FlutterLocalNotificationsPlugin();
+          const MethodChannel _nativeChannel = MethodChannel('com.hams.salawat/native');
 
           Future<void> main() async {
             WidgetsFlutterBinding.ensureInitialized();
-            const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-            const initSettings = InitializationSettings(android: androidInit);
-            await localNotifications.initialize(initSettings);
             runApp(const HamsApp());
           }
 
@@ -399,48 +502,37 @@ jobs:
             ];
 
             Set<int> _selectedIndices = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-            PermissionStatus _notifPermStatus = PermissionStatus.denied;
-            PermissionStatus _batteryPermStatus = PermissionStatus.denied;
             Timer? _periodicTimer;
 
             @override
             void initState() {
               super.initState();
               _loadData();
-              _checkAndRequestPermissionsOnStart();
+              _requestNotifOnStart();
               _restartTimer();
             }
 
-            Future<void> _checkAndRequestPermissionsOnStart() async {
-              final notifStatus = await Permission.notification.status;
-              final battStatus = await Permission.ignoreBatteryOptimizations.status;
-              if (mounted) {
-                setState(() {
-                  _notifPermStatus = notifStatus;
-                  _batteryPermStatus = battStatus;
-                });
-              }
-              if (!notifStatus.isGranted) {
-                final req = await Permission.notification.request();
-                if (mounted) setState(() => _notifPermStatus = req);
-              }
+            Future<void> _requestNotifOnStart() async {
+              try {
+                await _nativeChannel.invokeMethod('requestNotificationPermission');
+              } catch (_) {}
             }
 
             Future<void> _loadData() async {
               final prefs = await SharedPreferences.getInstance();
-              final savedList = prefs.getStringList('selectedIndices_v5');
+              final savedList = prefs.getStringList('selectedIndices_v6');
               setState(() {
-                _isEnabled = prefs.getBool('enabled_v5') ?? true;
-                _notificationsEnabled = prefs.getBool('notificationsEnabled_v5') ?? true;
-                _randomMode = prefs.getBool('randomMode_v5') ?? true;
-                _fridayDouble = prefs.getBool('fridayDouble_v5') ?? true;
-                _quietHours = prefs.getBool('quietHours_v5') ?? false;
-                _intervalMinutes = prefs.getInt('interval_v5') ?? 15;
-                _volume = prefs.getDouble('volume_v5') ?? 1.0;
+                _isEnabled = prefs.getBool('enabled_v6') ?? true;
+                _notificationsEnabled = prefs.getBool('notificationsEnabled_v6') ?? true;
+                _randomMode = prefs.getBool('randomMode_v6') ?? true;
+                _fridayDouble = prefs.getBool('fridayDouble_v6') ?? true;
+                _quietHours = prefs.getBool('quietHours_v6') ?? false;
+                _intervalMinutes = prefs.getInt('interval_v6') ?? 15;
+                _volume = prefs.getDouble('volume_v6') ?? 1.0;
 
-                _todayCount = prefs.getInt('todayCount_v5') ?? 0;
-                _tasbihCount = prefs.getInt('tasbihCount_v5') ?? 0;
-                _totalCount = prefs.getInt('totalCount_v5') ?? 0;
+                _todayCount = prefs.getInt('todayCount_v6') ?? 0;
+                _tasbihCount = prefs.getInt('tasbihCount_v6') ?? 0;
+                _totalCount = prefs.getInt('totalCount_v6') ?? 0;
 
                 if (savedList != null && savedList.isNotEmpty) {
                   _selectedIndices = savedList
@@ -458,18 +550,18 @@ jobs:
 
             Future<void> _saveData() async {
               final prefs = await SharedPreferences.getInstance();
-              await prefs.setBool('enabled_v5', _isEnabled);
-              await prefs.setBool('notificationsEnabled_v5', _notificationsEnabled);
-              await prefs.setBool('randomMode_v5', _randomMode);
-              await prefs.setBool('fridayDouble_v5', _fridayDouble);
-              await prefs.setBool('quietHours_v5', _quietHours);
-              await prefs.setInt('interval_v5', _intervalMinutes);
-              await prefs.setDouble('volume_v5', _volume);
-              await prefs.setInt('todayCount_v5', _todayCount);
-              await prefs.setInt('tasbihCount_v5', _tasbihCount);
-              await prefs.setInt('totalCount_v5', _totalCount);
+              await prefs.setBool('enabled_v6', _isEnabled);
+              await prefs.setBool('notificationsEnabled_v6', _notificationsEnabled);
+              await prefs.setBool('randomMode_v6', _randomMode);
+              await prefs.setBool('fridayDouble_v6', _fridayDouble);
+              await prefs.setBool('quietHours_v6', _quietHours);
+              await prefs.setInt('interval_v6', _intervalMinutes);
+              await prefs.setDouble('volume_v6', _volume);
+              await prefs.setInt('todayCount_v6', _todayCount);
+              await prefs.setInt('tasbihCount_v6', _tasbihCount);
+              await prefs.setInt('totalCount_v6', _totalCount);
               await prefs.setStringList(
-                'selectedIndices_v5',
+                'selectedIndices_v6',
                 _selectedIndices.map((e) => e.toString()).toList(),
               );
             }
@@ -505,21 +597,12 @@ jobs:
               await _saveData();
 
               if (showNotif && _notificationsEnabled) {
-                const androidDetails = AndroidNotificationDetails(
-                  'hams_channel_v5',
-                  'تذكيرات هَمْس الصوتية',
-                  channelDescription: 'إشعارات التذكير بالصلاة على النبي ﷺ',
-                  importance: Importance.high,
-                  priority: Priority.high,
-                  playSound: false,
-                );
-                const details = NotificationDetails(android: androidDetails);
-                await localNotifications.show(
-                  DateTime.now().millisecondsSinceEpoch ~/ 1000,
-                  'هَمْس | Hams 🕌',
-                  '« ${item['display']!} »',
-                  details,
-                );
+                try {
+                  await _nativeChannel.invokeMethod('showNotification', {
+                    'title': 'هَمْس | Hams 🕌',
+                    'body': '« ${item['display']!} »',
+                  });
+                } catch (_) {}
               }
 
               if (mounted) {
@@ -786,7 +869,7 @@ jobs:
                                     color: Colors.white,
                                     fontSize: 48,
                                     fontWeight: FontWeight.bold)),
-                            const Text('اللَّهُمَّ صَلِّ وَسَلِّمْ وَبَارِكْ عَلَى نَبِيِّنَا مُحَمَّدٍ ',
+                            const Text('اللَّهُمَّ صَلِّ وَسَلِّمْ وَبَارِكْ عَلَى نَبِيِّنَا مُحَمَّدٍ',
                                 style: TextStyle(color: Colors.white70, fontSize: 13)),
                           ],
                         ),
@@ -825,9 +908,6 @@ jobs:
             }
 
             Widget _buildSettingsAndPermissionsTab() {
-              final isNotifGranted = _notifPermStatus.isGranted;
-              final isBattGranted = _batteryPermStatus.isGranted;
-
               return ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
@@ -846,9 +926,10 @@ jobs:
                       value: _notificationsEnabled,
                       activeColor: const Color(0xFF065F46),
                       onChanged: (val) async {
-                        if (val && !_notifPermStatus.isGranted) {
-                          final status = await Permission.notification.request();
-                          setState(() => _notifPermStatus = status);
+                        if (val) {
+                          try {
+                            await _nativeChannel.invokeMethod('requestNotificationPermission');
+                          } catch (_) {}
                         }
                         setState(() => _notificationsEnabled = val);
                         await _saveData();
@@ -932,47 +1013,37 @@ jobs:
                   const SizedBox(height: 8),
                   Card(
                     child: ListTile(
-                      leading: Icon(
-                        isNotifGranted ? Icons.check_circle : Icons.warning_amber_rounded,
-                        color: isNotifGranted ? Colors.green : Colors.orange,
-                        size: 30,
-                      ),
+                      leading: const Icon(Icons.notifications, color: Color(0xFF065F46), size: 30),
                       title: const Text('إذن عرض الإشعارات والتنبيهات',
                           style: TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(isNotifGranted
-                          ? 'مفعل بنجاح ✅'
-                          : 'اضغط هنا لمنح إذن الإشعارات'),
+                      subtitle: const Text('اضغط لطلب إذن الإشعارات واختبار الإشعار'),
                       trailing: ElevatedButton(
                         onPressed: () async {
-                          final req = await Permission.notification.request();
-                          if (req.isPermanentlyDenied) {
-                            await openAppSettings();
-                          }
-                          setState(() => _notifPermStatus = req);
+                          try {
+                            await _nativeChannel.invokeMethod('requestNotificationPermission');
+                            await _nativeChannel.invokeMethod('showNotification', {
+                              'title': 'هَمْس | Hams 🕌',
+                              'body': 'تم تفعيل الإشعارات بنجاح! صَلِّ عَلَى النَّبِيِّ ﷺ',
+                            });
+                          } catch (_) {}
                         },
-                        child: Text(isNotifGranted ? 'مفعل' : 'تفعيل الآن'),
+                        child: const Text('تفعيل واختبار'),
                       ),
                     ),
                   ),
                   Card(
                     child: ListTile(
-                      leading: Icon(
-                        isBattGranted ? Icons.battery_charging_full : Icons.battery_alert,
-                        color: isBattGranted ? Colors.green : Colors.orange,
-                        size: 30,
-                      ),
+                      leading: const Icon(Icons.battery_charging_full, color: Color(0xFF065F46), size: 30),
                       title: const Text('إذن العمل في الخلفية (تجاهل توفير البطارية)',
                           style: TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(isBattGranted
-                          ? 'مفعل بنجاح ✅'
-                          : 'اضغط هنا للسماح للتطبيق بالعمل دون إيقاف'),
+                      subtitle: const Text('يسمح للتطبيق بالعمل دون إيقاف من النظام'),
                       trailing: ElevatedButton(
                         onPressed: () async {
-                          final req =
-                              await Permission.ignoreBatteryOptimizations.request();
-                          setState(() => _batteryPermStatus = req);
+                          try {
+                            await _nativeChannel.invokeMethod('requestBatteryExemption');
+                          } catch (_) {}
                         },
-                        child: Text(isBattGranted ? 'مفعل' : 'تفعيل الآن'),
+                        child: const Text('تفعيل الآن'),
                       ),
                     ),
                   ),
@@ -982,7 +1053,11 @@ jobs:
                       title: const Text('فتح إعدادات أذونات التطبيق في الهاتف'),
                       subtitle: const Text('للتحكم اليدوي بجميع أذونات النظام'),
                       trailing: const Icon(Icons.open_in_new),
-                      onTap: () => openAppSettings(),
+                      onTap: () async {
+                        try {
+                          await _nativeChannel.invokeMethod('openAppSettings');
+                        } catch (_) {}
+                      },
                     ),
                   ),
                 ],
@@ -1018,9 +1093,8 @@ jobs:
           }
           EOF
 
-          # 6. توليد أيقونة اللانشر وبناء الـ APK النهائي
+          # 7. بناء الـ APK النهائي
           flutter pub get
-          dart run flutter_launcher_icons
           flutter build apk --release
 
       - name: Upload Hams APK
