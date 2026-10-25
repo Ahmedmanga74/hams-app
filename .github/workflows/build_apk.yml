@@ -28,28 +28,26 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Create Hams Full Project & Native Background Service
+      - name: Generate Project Structure and Audio Files
         run: |
           rm -rf android ios lib test pubspec.yaml pubspec.lock .metadata
           flutter create --org com.hams.salawat --project-name hams .
-
-          # 1. تجهيز ملفات الصوت الـ 12 داخل assets/audio
           mkdir -p assets/audio
           cp /tmp/hams_mp3/*.mp3 assets/audio/ 2>/dev/null || true
-
           if [ -z "$(ls -A assets/audio/*.mp3 2>/dev/null)" ]; then
             printf '\xff\xfb\x90\x64\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' > assets/audio/voice1.mp3
           fi
-
           FIRST_MP3=$(ls assets/audio/*.mp3 | head -n 1)
           for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
             if [ ! -f "assets/audio/voice${i}.mp3" ]; then
               cp "$FIRST_MP3" "assets/audio/voice${i}.mp3"
             fi
           done
-          ls -la assets/audio/
+          flutter pub add shared_preferences audioplayers
+          printf "\n  assets:\n    - assets/audio/\n" >> pubspec.yaml
 
-          # 2. توليد أيقونة تطبيق (هَمْس | Hams) الرسمية بلغة Dart
+      - name: Generate App Icon
+        run: |
           cat << 'DARTEOF' > generate_icon.dart
           import 'dart:io';
           import 'dart:typed_data';
@@ -144,21 +142,12 @@ jobs:
             });
           }
           DARTEOF
-
           dart run generate_icon.dart
           rm -f generate_icon.dart
           rm -rf android/app/src/main/res/mipmap-anydpi-v26
 
-          # 3. إضافة المكتبات في pubspec.yaml بشكل نظيف ومضمون
-          flutter pub add shared_preferences audioplayers
-
-          cat << 'EOF' >> pubspec.yaml
-
-            assets:
-              - assets/audio/
-          EOF
-
-          # 4. تحديث AndroidManifest.xml بجميع الأذونات والخدمة الخلفية
+      - name: Configure Android Manifest and Native Background Service
+        run: |
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -204,7 +193,6 @@ jobs:
           </manifest>
           EOF
 
-          # 5. كتابة خدمة الخلفية ومستشعر فتح القفل الأصلي بلغة Kotlin
           MAIN_KT=$(find android/app/src/main/kotlin -name "MainActivity.kt" | head -n 1)
           KT_DIR=$(dirname "$MAIN_KT")
           PKG_LINE=$(head -n 1 "$MAIN_KT")
@@ -600,8 +588,9 @@ jobs:
           }
           EOF
 
-          # 6. كتابة واجهات التطبيق الكاملة في lib/main.dart بدون أي أخطاء ترجمة
-          cat << 'EOF' > lib/main.dart
+      - name: Write Flutter UI Code (lib/main.dart)
+        run: |
+          cat << 'FLUTTEREOF' > lib/main.dart
           import 'dart:async';
           import 'dart:math';
           import 'package:flutter/material.dart';
@@ -1133,4 +1122,13 @@ jobs:
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.bold,
                               ),
-        
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                body: pages[_currentIndex],
+                bottomNavigationBar: NavigationBar(
+                  backg
