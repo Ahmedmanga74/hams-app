@@ -29,30 +29,43 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: 5. Create Clean Flutter Project & Restore Files
+      - name: 5. Create Clean Flutter Project & Map All 12 MP3s
+        shell: python3 {0}
         run: |
-          rm -rf android ios lib test pubspec.yaml pubspec.lock .metadata
-          flutter create --org com.hams.salawat --project-name hams .
-          mkdir -p assets/audio
-          cp /tmp/hams_backup/main.dart lib/main.dart
-          cp /tmp/hams_backup/audio/*.mp3 assets/audio/ 2>/dev/null || true
-          if [ -z "$(ls -A assets/audio/*.mp3 2>/dev/null)" ]; then
-            printf '\xff\xfb\x90\x64\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' > assets/audio/voice1.mp3
-          fi
-          FIRST_MP3=$(ls assets/audio/*.mp3 | head -n 1)
-          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-            if [ ! -f "assets/audio/voice${i}.mp3" ]; then
-              cp "$FIRST_MP3" "assets/audio/voice${i}.mp3"
-            fi
-          done
+          import os, glob, shutil, subprocess
 
-      - name: 6. Configure Android Native Service & Icon
+          for item in ["android", "ios", "lib", "test", "pubspec.yaml", "pubspec.lock", ".metadata"]:
+              if os.path.exists(item):
+                  if os.path.isdir(item): shutil.rmtree(item)
+                  else: os.remove(item)
+
+          subprocess.run(["flutter", "create", "--org", "com.hams.salawat", "--project-name", "hams", "."], check=True)
+          os.makedirs("assets/audio", exist_ok=True)
+          shutil.copy("/tmp/hams_backup/main.dart", "lib/main.dart")
+
+          mp3_files = sorted(glob.glob("/tmp/hams_backup/audio/*.mp3"))
+          print("Found uploaded MP3 files:", mp3_files)
+
+          for f in mp3_files:
+              shutil.copy(f, os.path.join("assets/audio", os.path.basename(f)))
+
+          for i in range(1, 13):
+              target = f"assets/audio/voice{i}.mp3"
+              if not os.path.exists(target) or os.path.getsize(target) < 100:
+                  if mp3_files:
+                      src = mp3_files[(i - 1) % len(mp3_files)]
+                      shutil.copy(src, target)
+                      print(f"Mapped {src} -> {target}")
+
+          print("Final assets/audio directory:", os.listdir("assets/audio"))
+
+      - name: 6. Configure Android Native Service, Audio & Icon
         shell: python3 {0}
         run: |
           import os, glob, shutil, struct, zlib, math
 
           with open("pubspec.yaml", "w", encoding="utf-8") as f:
-              f.write("name: hams\ndescription: Hams\npublish_to: 'none'\nversion: 1.0.0+1\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\ndependencies:\n  flutter:\n    sdk: flutter\n  shared_preferences: ^2.2.3\n  audioplayers: ^6.0.0\nflutter:\n  uses-material-design: true\n  assets:\n    - assets/audio/\n")
+              f.write("name: hams\ndescription: Hams\npublish_to: 'none'\nversion: 1.0.0+1\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\ndependencies:\n  flutter:\n    sdk: flutter\n  shared_preferences: ^2.2.3\nflutter:\n  uses-material-design: true\n  assets:\n    - assets/audio/\n")
 
           def create_hams_icon(filename, size):
               raw_data = bytearray()
@@ -125,19 +138,51 @@ jobs:
               'import android.os.*',
               'import androidx.core.app.NotificationCompat',
               'import io.flutter.FlutterInjector',
-              'import java.text.SimpleDateFormat',
+              'import java.io.File',
+              'import java.io.FileOutputStream',
               'import java.util.*',
               'class HamsForegroundService : Service() {',
+              '    companion object {',
+              '        var sharedMediaPlayer: MediaPlayer? = null',
+              '        val formulas = arrayOf("اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ","صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ","اللَّهُمَّ صَلِّ عَلَى نَبِيِّنَا مُحَمَّدٍ","صَلِّ عَلَى النَّبِيِّ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ، كَمَا صَلَّيْتَ عَلَى إِبْرَاهِيمَ","صَلِّ عَلَى رَسُولِ اللهِ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى أَزْوَاجِهِ وَذُرِّيَّتِهِ","اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ","الصَّلَاةُ وَالسَّلَامُ عَلَيْكَ يَا رَسُولَ اللهِ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ النَّبِيِّ الْأُمِّيِّ وَعَلَى آلِهِ وَصَحْبِهِ وَسَلِّمْ")',
+              '        fun playVoiceAsset(ctx: Context, idx: Int, vol: Float) {',
+              '            try {',
+              '                sharedMediaPlayer?.stop(); sharedMediaPlayer?.release(); sharedMediaPlayer = null',
+              '                val loader = FlutterInjector.instance().flutterLoader()',
+              '                loader.startInitialization(ctx.applicationContext)',
+              '                loader.ensureInitializationComplete(ctx.applicationContext, null)',
+              '                val assetKey = loader.getLookupKeyForAsset("assets/audio/voice" + (idx + 1) + ".mp3")',
+              '                val tempFile = File(ctx.cacheDir, "playing_voice.mp3")',
+              '                ctx.assets.open(assetKey).use { input ->',
+              '                    FileOutputStream(tempFile).use { output -> input.copyTo(output) }',
+              '                }',
+              '                val mp = MediaPlayer()',
+              '                mp.setAudioAttributes(AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).setUsage(AudioAttributes.USAGE_MEDIA).build())',
+              '                mp.setDataSource(tempFile.absolutePath)',
+              '                mp.setVolume(vol, vol)',
+              '                mp.setOnPreparedListener { it.start() }',
+              '                mp.setOnCompletionListener { it.release(); if (sharedMediaPlayer == it) sharedMediaPlayer = null }',
+              '                mp.prepareAsync()',
+              '                sharedMediaPlayer = mp',
+              '            } catch (_: Exception) {}',
+              '        }',
+              '        fun showAlertNotif(ctx: Context, title: String, body: String) {',
+              '            try {',
+              '                val m = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager',
+              '                if (Build.VERSION.SDK_INT >= 26) m.createNotificationChannel(NotificationChannel("hams_alerts", "تذكيرات هَمْس", NotificationManager.IMPORTANCE_HIGH))',
+              '                val nb = NotificationCompat.Builder(ctx, "hams_alerts").setSmallIcon(ctx.applicationInfo.icon).setContentTitle(title).setContentText(body).setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true)',
+              '                m.notify((System.currentTimeMillis() % 10000).toInt(), nb.build())',
+              '            } catch (_: Exception) {}',
+              '        }',
+              '    }',
               '    private var screenReceiver: BroadcastReceiver? = null',
-              '    private var mediaPlayer: MediaPlayer? = null',
               '    private val handler = Handler(Looper.getMainLooper())',
               '    private var lastUnlockPlayTime = 0L',
               '    private val random = Random()',
-              '    private val formulas = arrayOf("اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ","صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ","اللَّهُمَّ صَلِّ عَلَى نَبِيِّنَا مُحَمَّدٍ","صَلِّ عَلَى النَّبِيِّ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ، كَمَا صَلَّيْتَ عَلَى إِبْرَاهِيمَ","صَلِّ عَلَى رَسُولِ اللهِ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى أَزْوَاجِهِ وَذُرِّيَّتِهِ","اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ","الصَّلَاةُ وَالسَّلَامُ عَلَيْكَ يَا رَسُولَ اللهِ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ النَّبِيِّ الْأُمِّيِّ وَعَلَى آلِهِ وَصَحْبِهِ وَسَلِّمْ")',
               '    private val periodicRunnable = object : Runnable {',
               '        override fun run() {',
               '            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)',
-              '            if (prefs.getBoolean("flutter.enabled_v8", true)) triggerSalawat("تذكير دوري ⏱️")',
+              '            if (prefs.getBoolean("flutter.enabled_v9", true)) triggerSalawat()',
               '            scheduleNextTick()',
               '        }',
               '    }',
@@ -155,10 +200,10 @@ jobs:
               '    private fun scheduleNextTick() {',
               '        handler.removeCallbacks(periodicRunnable)',
               '        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)',
-              '        if (!prefs.getBoolean("flutter.enabled_v8", true)) return',
-              '        val baseMins = prefs.getLong("flutter.interval_v8", 15L).toInt().coerceAtLeast(2)',
+              '        if (!prefs.getBoolean("flutter.enabled_v9", true)) return',
+              '        val baseMins = prefs.getLong("flutter.interval_v9", 15L).toInt().coerceAtLeast(2)',
               '        val isFri = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) == Calendar.FRIDAY',
-              '        val mins = if (prefs.getBoolean("flutter.fridayDouble_v8", true) && isFri) (baseMins / 2).coerceAtLeast(2) else baseMins',
+              '        val mins = if (prefs.getBoolean("flutter.fridayDouble_v9", true) && isFri) (baseMins / 2).coerceAtLeast(2) else baseMins',
               '        handler.postDelayed(periodicRunnable, mins * 60 * 1000L)',
               '    }',
               '    private fun registerUnlock() {',
@@ -168,11 +213,11 @@ jobs:
               '                val act = i?.action ?: return',
               '                if (act == Intent.ACTION_USER_PRESENT || act == Intent.ACTION_SCREEN_ON) {',
               '                    val now = System.currentTimeMillis()',
-              '                    if (now - lastUnlockPlayTime < 8000L) return',
+              '                    if (now - lastUnlockPlayTime < 6000L) return',
               '                    val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)',
-              '                    if (prefs.getBoolean("flutter.enabled_v8", true) && prefs.getBoolean("flutter.unlockRemind_v8", true)) {',
+              '                    if (prefs.getBoolean("flutter.enabled_v9", true) && prefs.getBoolean("flutter.unlockRemind_v9", true)) {',
               '                        lastUnlockPlayTime = now',
-              '                        triggerSalawat("عند فتح قفل الشاشة 🔓")',
+              '                        triggerSalawat()',
               '                    }',
               '                }',
               '            }',
@@ -180,45 +225,36 @@ jobs:
               '        val f = IntentFilter().apply { addAction(Intent.ACTION_USER_PRESENT); addAction(Intent.ACTION_SCREEN_ON) }',
               '        if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenReceiver, f, Context.RECEIVER_EXPORTED) else registerReceiver(screenReceiver, f)',
               '    }',
-              '    private fun triggerSalawat(src: String) {',
+              '    private fun triggerSalawat() {',
               '        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)',
-              '        if (prefs.getBoolean("flutter.quietHours_v8", false)) {',
+              '        if (prefs.getBoolean("flutter.quietHours_v9", false)) {',
               '            val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)',
               '            if (h >= 23 || h < 6) return',
               '        }',
-              '        val csv = prefs.getString("flutter.selectedCsv_v8", "0,1,2,3,4,5,6,7,8,9,10,11") ?: "0,1,2,3,4,5,6,7,8,9,10,11"',
+              '        val csv = prefs.getString("flutter.selectedCsv_v9", "0,1,2,3,4,5,6,7,8,9,10,11") ?: "0,1,2,3,4,5,6,7,8,9,10,11"',
               '        val list = csv.split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it in 0..11 }',
               '        val pool = if (list.isEmpty()) (0..11).toList() else list',
-              '        val idx = if (prefs.getBoolean("flutter.randomMode_v8", true)) pool[random.nextInt(pool.size)] else pool.first()',
-              '        val vol = (prefs.getLong("flutter.volumePct_v8", 80L).toFloat().coerceIn(10f, 100f)) / 100f',
-              '        playMp3("audio/voice" + (idx + 1) + ".mp3", vol)',
-              '        val today = prefs.getLong("flutter.todayCount_v8", 0L) + 1L',
-              '        val total = prefs.getLong("flutter.totalCount_v8", 0L) + 1L',
-              '        prefs.edit().putLong("flutter.todayCount_v8", today).putLong("flutter.totalCount_v8", total).apply()',
-              '    }',
-              '    private fun playMp3(path: String, vol: Float) {',
-              '        try {',
-              '            mediaPlayer?.stop(); mediaPlayer?.release(); mediaPlayer = null',
-              '            val key = FlutterInjector.instance().flutterLoader().getLookupKeyForAsset(path)',
-              '            val afd = assets.openFd(key)',
-              '            val mp = MediaPlayer()',
-              '            mp.setAudioAttributes(AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).setUsage(AudioAttributes.USAGE_MEDIA).build())',
-              '            mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length); afd.close()',
-              '            mp.setVolume(vol, vol); mp.setOnPreparedListener { it.start() }; mp.setOnCompletionListener { it.release() }; mp.prepareAsync()',
-              '            mediaPlayer = mp',
-              '        } catch (_: Exception) {}',
+              '        val idx = if (prefs.getBoolean("flutter.randomMode_v9", true)) pool[random.nextInt(pool.size)] else pool.first()',
+              '        val vol = (prefs.getLong("flutter.volumePct_v9", 80L).toFloat().coerceIn(10f, 100f)) / 100f',
+              '        playVoiceAsset(this, idx, vol)',
+              '        val today = prefs.getLong("flutter.todayCount_v9", 0L) + 1L',
+              '        val total = prefs.getLong("flutter.totalCount_v9", 0L) + 1L',
+              '        prefs.edit().putLong("flutter.todayCount_v9", today).putLong("flutter.totalCount_v9", total).apply()',
+              '        if (prefs.getBoolean("flutter.notificationsEnabled_v9", true)) {',
+              '            showAlertNotif(this, "هَمْس | Hams 🕌", "« " + formulas[idx] + " »")',
+              '        }',
               '    }',
               '    private fun buildNotif(txt: String): Notification {',
               '        val cid = "hams_bg"',
               '        val m = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager',
-              '        if (Build.VERSION.SDK_INT >= 26) m.createNotificationChannel(NotificationChannel(cid, "Hams Service", NotificationManager.IMPORTANCE_LOW))',
+              '        if (Build.VERSION.SDK_INT >= 26) m.createNotificationChannel(NotificationChannel(cid, "خدمة هَمْس الخلفية", NotificationManager.IMPORTANCE_LOW))',
               '        val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)',
               '        return NotificationCompat.Builder(this, cid).setSmallIcon(applicationInfo.icon).setContentTitle("هَمْس | Hams").setContentText(txt).setContentIntent(pi).setOngoing(true).build()',
               '    }',
               '    override fun onDestroy() {',
               '        handler.removeCallbacks(periodicRunnable)',
               '        if (screenReceiver != null) { try { unregisterReceiver(screenReceiver) } catch (_: Exception) {} }',
-              '        mediaPlayer?.release(); super.onDestroy()',
+              '        super.onDestroy()',
               '    }',
               '    override fun onBind(intent: Intent?): IBinder? = null',
               '}'
@@ -234,7 +270,6 @@ jobs:
               'import android.os.*',
               'import android.provider.Settings',
               'import androidx.core.app.ActivityCompat',
-              'import androidx.core.app.NotificationCompat',
               'import androidx.core.content.ContextCompat',
               'import io.flutter.embedding.android.FlutterActivity',
               'import io.flutter.embedding.engine.FlutterEngine',
@@ -247,6 +282,14 @@ jobs:
               '            when (call.method) {',
               '                "startOrUpdateService" -> {',
               '                    if (call.argument<Boolean>("enabled") ?: true) startHamsService() else stopService(Intent(this, HamsForegroundService::class.java))',
+              '                    result.success(true)',
+              '                }',
+              '                "playDhikrNow" -> {',
+              '                    val idx = (call.argument<Int>("index") ?: 0).coerceIn(0, 11)',
+              '                    val volPct = (call.argument<Int>("volumePct") ?: 80).coerceIn(10, 100)',
+              '                    val showNotif = call.argument<Boolean>("showNotif") ?: true',
+              '                    HamsForegroundService.playVoiceAsset(this, idx, volPct / 100f)',
+              '                    if (showNotif) HamsForegroundService.showAlertNotif(this, "هَمْس | Hams 🕌", "« " + HamsForegroundService.formulas[idx] + " »")',
               '                    result.success(true)',
               '                }',
               '                "checkPermissions" -> {',
@@ -269,10 +312,7 @@ jobs:
               '                    result.success(true)',
               '                }',
               '                "showNotification" -> {',
-              '                    val m = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager',
-              '                    if (Build.VERSION.SDK_INT >= 26) m.createNotificationChannel(NotificationChannel("hams_alerts", "Hams Alerts", NotificationManager.IMPORTANCE_HIGH))',
-              '                    val nb = NotificationCompat.Builder(this, "hams_alerts").setSmallIcon(applicationInfo.icon).setContentTitle(call.argument<String>("title") ?: "هَمْس").setContentText(call.argument<String>("body") ?: "").setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true)',
-              '                    m.notify((System.currentTimeMillis() % 10000).toInt(), nb.build())',
+              '                    HamsForegroundService.showAlertNotif(this, call.argument<String>("title") ?: "هَمْس", call.argument<String>("body") ?: "")',
               '                    result.success(true)',
               '                }',
               '                else -> result.notImplemented()',
