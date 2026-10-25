@@ -11,11 +11,12 @@ jobs:
       - name: 1. Checkout Repository Files
         uses: actions/checkout@v4
 
-      - name: 2. Backup Uploaded 12 MP3 Files
+      - name: 2. Backup Uploaded Files (main.dart & 12 MP3s)
         run: |
-          mkdir -p /tmp/hams_mp3
-          find . -maxdepth 3 -iname "*.mp3" -exec cp {} /tmp/hams_mp3/ \; || true
-          ls -la /tmp/hams_mp3/
+          mkdir -p /tmp/hams_backup/audio
+          cp lib/main.dart /tmp/hams_backup/main.dart
+          find . -maxdepth 3 -iname "*.mp3" -exec cp {} /tmp/hams_backup/audio/ \; || true
+          ls -la /tmp/hams_backup/audio/
 
       - name: 3. Setup Java 17
         uses: actions/setup-java@v4
@@ -28,12 +29,13 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: 5. Create Clean Flutter Project & Copy MP3s
+      - name: 5. Create Clean Flutter Project & Restore Files
         run: |
           rm -rf android ios lib test pubspec.yaml pubspec.lock .metadata
           flutter create --org com.hams.salawat --project-name hams .
           mkdir -p assets/audio
-          cp /tmp/hams_mp3/*.mp3 assets/audio/ 2>/dev/null || true
+          cp /tmp/hams_backup/main.dart lib/main.dart
+          cp /tmp/hams_backup/audio/*.mp3 assets/audio/ 2>/dev/null || true
           if [ -z "$(ls -A assets/audio/*.mp3 2>/dev/null)" ]; then
             printf '\xff\xfb\x90\x64\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' > assets/audio/voice1.mp3
           fi
@@ -43,42 +45,38 @@ jobs:
               cp "$FIRST_MP3" "assets/audio/voice${i}.mp3"
             fi
           done
-          ls -la assets/audio/
 
-      - name: 6. Generate All Project Files Safely
+      - name: 6. Configure Android Native Service & Icon
         shell: python3 {0}
         run: |
-          import os, glob, shutil, struct, zlib, math, textwrap
+          import os, glob, shutil, struct, zlib, math
 
-          # 1. كتابة pubspec.yaml نظيف وسليم 100% بدون أخطاء YAML
-          pubspec_content = textwrap.dedent("""\
-          name: hams
-          description: "هَمْس | Hams - رفيقك للتذكير بالصلاة على النبي ﷺ"
+          pubspec = """name: hams
+          description: "Hams App"
           publish_to: 'none'
           version: 1.0.0+1
-
           environment:
             sdk: '>=3.0.0 <4.0.0'
-
           dependencies:
             flutter:
               sdk: flutter
             shared_preferences: ^2.2.3
             audioplayers: ^6.0.0
-
           dev_dependencies:
             flutter_test:
               sdk: flutter
-
           flutter:
             uses-material-design: true
             assets:
               - assets/audio/
-          """)
+          """
           with open("pubspec.yaml", "w", encoding="utf-8") as f:
-              f.write(pubspec_content)
+              f.write("\n".join(line.lstrip() if not line.startswith("  ") else line[10:] for line in pubspec.splitlines()))
 
-          # 2. توليد أيقونة تطبيق هَمْس واستبدال أيقونة Flutter
+          # Write clean pubspec directly
+          with open("pubspec.yaml", "w", encoding="utf-8") as f:
+              f.write("name: hams\ndescription: Hams\npublish_to: 'none'\nversion: 1.0.0+1\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\ndependencies:\n  flutter:\n    sdk: flutter\n  shared_preferences: ^2.2.3\n  audioplayers: ^6.0.0\nflutter:\n  uses-material-design: true\n  assets:\n    - assets/audio/\n")
+
           def create_hams_icon(filename, size):
               raw_data = bytearray()
               cx, cy = size / 2.0, size / 2.0
@@ -98,1014 +96,235 @@ jobs:
                       if ds < size * 0.045:
                           r, g, b, a = 251, 191, 36, 255
                       raw_data.extend([r, g, b, a])
-
-              def png_chunk(chunk_type, data):
-                  return (struct.pack(">I", len(data)) + chunk_type + data +
-                          struct.pack(">I", zlib.crc32(chunk_type + data) & 0xffffffff))
-
+              def png_chunk(t, d):
+                  return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
               ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
-              idat = zlib.compress(bytes(raw_data), 9)
-              png_bytes = b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", ihdr) + png_chunk(b"IDAT", idat) + png_chunk(b"IEND", b"")
+              png = b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", ihdr) + png_chunk(b"IDAT", zlib.compress(bytes(raw_data), 9)) + png_chunk(b"IEND", b"")
               os.makedirs(os.path.dirname(filename), exist_ok=True)
-              with open(filename, "wb") as f:
-                  f.write(png_bytes)
+              open(filename, "wb").write(png)
 
           res_base = "android/app/src/main/res"
           for folder, sz in [("mipmap-mdpi", 48), ("mipmap-hdpi", 72), ("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144), ("mipmap-xxxhdpi", 192)]:
               create_hams_icon(f"{res_base}/{folder}/ic_launcher.png", sz)
               create_hams_icon(f"{res_base}/{folder}/ic_launcher_round.png", sz)
+          if os.path.exists(f"{res_base}/mipmap-anydpi-v26"):
+              shutil.rmtree(f"{res_base}/mipmap-anydpi-v26")
 
-          anydpi = f"{res_base}/mipmap-anydpi-v26"
-          if os.path.exists(anydpi):
-              shutil.rmtree(anydpi)
+          manifest_lines = [
+              '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
+              '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
+              '    <uses-permission android:name="android.permission.VIBRATE" />',
+              '    <uses-permission android:name="android.permission.WAKE_LOCK" />',
+              '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />',
+              '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />',
+              '    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />',
+              '    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />',
+              '    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />',
+              '    <application android:label="هَمْس | Hams" android:name="${applicationName}" android:icon="@mipmap/ic_launcher">',
+              '        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop" android:theme="@style/LaunchTheme" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" android:hardwareAccelerated="true" android:windowSoftInputMode="adjustResize">',
+              '            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />',
+              '            <intent-filter>',
+              '                <action android:name="android.intent.action.MAIN"/>',
+              '                <category android:name="android.intent.category.LAUNCHER"/>',
+              '            </intent-filter>',
+              '        </activity>',
+              '        <service android:name=".HamsForegroundService" android:enabled="true" android:exported="false" android:foregroundServiceType="mediaPlayback" />',
+              '        <meta-data android:name="flutterEmbedding" android:value="2" />',
+              '    </application>',
+              '</manifest>'
+          ]
+          open("android/app/src/main/AndroidManifest.xml", "w", encoding="utf-8").write("\n".join(manifest_lines))
 
-          # 3. كتابة ملف AndroidManifest.xml
-          manifest_xml = textwrap.dedent("""\
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-              <uses-permission android:name="android.permission.VIBRATE" />
-              <uses-permission android:name="android.permission.WAKE_LOCK" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-              <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
-              <application
-                  android:label="هَمْس | Hams"
-                  android:name="${applicationName}"
-                  android:icon="@mipmap/ic_launcher">
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:launchMode="singleTop"
-                      android:theme="@style/LaunchTheme"
-                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-                      android:hardwareAccelerated="true"
-                      android:windowSoftInputMode="adjustResize">
-                      <meta-data
-                        android:name="io.flutter.embedding.android.NormalTheme"
-                        android:resource="@style/NormalTheme" />
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
-                      </intent-filter>
-                  </activity>
-
-                  <service
-                      android:name=".HamsForegroundService"
-                      android:enabled="true"
-                      android:exported="false"
-                      android:foregroundServiceType="mediaPlayback" />
-
-                  <meta-data
-                      android:name="flutterEmbedding"
-                      android:value="2" />
-              </application>
-          </manifest>
-          """)
-          with open("android/app/src/main/AndroidManifest.xml", "w", encoding="utf-8") as f:
-              f.write(manifest_xml)
-
-          # 4. كتابة كود خدمة الخلفية ومستشعر فتح قفل الشاشة بـ Kotlin
-          main_kt_files = glob.glob("android/app/src/main/kotlin/**/MainActivity.kt", recursive=True)
-          main_kt_path = main_kt_files[0]
+          main_kt_path = glob.glob("android/app/src/main/kotlin/**/MainActivity.kt", recursive=True)[0]
           kt_dir = os.path.dirname(main_kt_path)
-          with open(main_kt_path, "r", encoding="utf-8") as f:
-              pkg_line = f.readline().strip()
-
-          service_kt = pkg_line + "\n\n" + textwrap.dedent("""\
-          import android.app.Notification
-          import android.app.NotificationChannel
-          import android.app.NotificationManager
-          import android.app.PendingIntent
-          import android.app.Service
-          import android.content.BroadcastReceiver
-          import android.content.Context
-          import android.content.Intent
-          import android.content.IntentFilter
-          import android.content.pm.ServiceInfo
-          import android.media.AudioAttributes
-          import android.media.MediaPlayer
-          import android.os.Build
-          import android.os.Handler
-          import android.os.IBinder
-          import android.os.Looper
-          import androidx.core.app.NotificationCompat
-          import io.flutter.FlutterInjector
-          import java.text.SimpleDateFormat
-          import java.util.Calendar
-          import java.util.Date
-          import java.util.Locale
-          import java.util.Random
-
-          class HamsForegroundService : Service() {
-              private var screenReceiver: BroadcastReceiver? = null
-              private var mediaPlayer: MediaPlayer? = null
-              private val handler = Handler(Looper.getMainLooper())
-              private var lastUnlockPlayTime = 0L
-              private val random = Random()
-
-              private val formulas = arrayOf(
-                  "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ",
-                  "صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ",
-                  "اللَّهُمَّ صَلِّ عَلَى نَبِيِّنَا مُحَمَّدٍ",
-                  "صَلِّ عَلَى النَّبِيِّ",
-                  "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ، كَمَا صَلَّيْتَ عَلَى إِبْرَاهِيمَ",
-                  "صَلِّ عَلَى رَسُولِ اللهِ",
-                  "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى أَزْوَاجِهِ وَذُرِّيَّتِهِ",
-                  "اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ",
-                  "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ",
-                  "الصَّلَاةُ وَالسَّلَامُ عَلَيْكَ يَا رَسُولَ اللهِ",
-                  "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ",
-                  "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ النَّبِيِّ الْأُمِّيِّ وَعَلَى آلِهِ وَصَحْبِهِ وَسَلِّمْ"
-              )
-
-              private val periodicRunnable = object : Runnable {
-                  override fun run() {
-                      val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                      val enabled = prefs.getBoolean("flutter.enabled_v7", true)
-                      if (enabled) {
-                          triggerSalawatFromBackground("تذكير دوري ⏱️")
-                      }
-                      scheduleNextTick()
-                  }
-              }
-
-              override fun onCreate() {
-                  super.onCreate()
-                  val notif = buildForegroundNotification("التذكير الصوتي نشط في الخلفية وعند فتح الشاشة")
-                  if (Build.VERSION.SDK_INT >= 34) {
-                      startForeground(7701, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-                  } else {
-                      startForeground(7701, notif)
-                  }
-                  registerScreenUnlockReceiver()
-                  scheduleNextTick()
-              }
-
-              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-                  if (intent?.action == "UPDATE_TIMER") {
-                      scheduleNextTick()
-                  }
-                  return START_STICKY
-              }
-
-              private fun scheduleNextTick() {
-                  handler.removeCallbacks(periodicRunnable)
-                  val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                  val enabled = prefs.getBoolean("flutter.enabled_v7", true)
-                  if (!enabled) return
-                  val baseMins = prefs.getLong("flutter.interval_v7", 15L).toInt().coerceAtLeast(2)
-                  val fridayDouble = prefs.getBoolean("flutter.fridayDouble_v7", true)
-                  val cal = Calendar.getInstance()
-                  val isFriday = cal.get(Calendar.DAY_OF_WEEK) == Calendar.FRIDAY
-                  val effectiveMins = if (fridayDouble && isFriday) (baseMins / 2).coerceAtLeast(2) else baseMins
-                  handler.postDelayed(periodicRunnable, effectiveMins * 60 * 1000L)
-              }
-
-              private fun registerScreenUnlockReceiver() {
-                  if (screenReceiver != null) return
-                  screenReceiver = object : BroadcastReceiver() {
-                      override fun onReceive(context: Context?, intent: Intent?) {
-                          val act = intent?.action ?: return
-                          if (act == Intent.ACTION_USER_PRESENT || act == Intent.ACTION_SCREEN_ON) {
-                              val now = System.currentTimeMillis()
-                              if (now - lastUnlockPlayTime < 8000L) return
-                              val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                              val enabled = prefs.getBoolean("flutter.enabled_v7", true)
-                              val unlockRemind = prefs.getBoolean("flutter.unlockRemind_v7", true)
-                              if (enabled && unlockRemind) {
-                                  lastUnlockPlayTime = now
-                                  triggerSalawatFromBackground("عند فتح قفل الشاشة 🔓")
-                              }
-                          }
-                      }
-                  }
-                  val filter = IntentFilter().apply {
-                      addAction(Intent.ACTION_USER_PRESENT)
-                      addAction(Intent.ACTION_SCREEN_ON)
-                  }
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                      registerReceiver(screenReceiver, filter, Context.RECEIVER_EXPORTED)
-                  } else {
-                      registerReceiver(screenReceiver, filter)
-                  }
-              }
-
-              private fun isInQuietHours(): Boolean {
-                  val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                  val quietEnabled = prefs.getBoolean("flutter.quietHours_v7", false)
-                  if (!quietEnabled) return false
-                  val startH = prefs.getLong("flutter.quietStart_v7", 23L).toInt()
-                  val endH = prefs.getLong("flutter.quietEnd_v7", 6L).toInt()
-                  val currentH = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-                  return if (startH > endH) {
-                      currentH >= startH || currentH < endH
-                  } else {
-                      currentH in startH until endH
-                  }
-              }
-
-              private fun triggerSalawatFromBackground(sourceLabel: String) {
-                  if (isInQuietHours()) return
-                  val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                  val csv = prefs.getString("flutter.selectedCsv_v7", "0,1,2,3,4,5,6,7,8,9,10,11") ?: "0,1,2,3,4,5,6,7,8,9,10,11"
-                  val indices = csv.split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it in 0..11 }
-                  val pool = if (indices.isEmpty()) (0..11).toList() else indices
-                  val randomMode = prefs.getBoolean("flutter.randomMode_v7", true)
-                  val chosenIdx = if (randomMode) pool[random.nextInt(pool.size)] else pool.first()
-
-                  val volPct = prefs.getLong("flutter.volumePct_v7", 80L).toFloat().coerceIn(10f, 100f)
-                  val volume = volPct / 100f
-
-                  playAssetMp3("audio/voice" + (chosenIdx + 1) + ".mp3", volume)
-
-                  val today = prefs.getLong("flutter.todayCount_v7", 0L) + 1L
-                  val total = prefs.getLong("flutter.totalCount_v7", 0L) + 1L
-                  val timeStr = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
-                  val newLogItem = "همسة: " + formulas[chosenIdx] + "|" + sourceLabel + " — الصوت: " + volPct.toInt() + "%|" + timeStr
-                  val oldLogs = prefs.getString("flutter.logsCsv_v7", "") ?: ""
-                  val combinedLogs = if (oldLogs.isEmpty()) newLogItem else (newLogItem + ";;" + oldLogs)
-                  val trimmedLogs = combinedLogs.split(";;").take(25).joinToString(";;")
-
-                  prefs.edit()
-                      .putLong("flutter.todayCount_v7", today)
-                      .putLong("flutter.totalCount_v7", total)
-                      .putString("flutter.logsCsv_v7", trimmedLogs)
-                      .apply()
-
-                  val notifEnabled = prefs.getBoolean("flutter.notificationsEnabled_v7", true)
-                  if (notifEnabled) {
-                      showSalawatNotification("هَمْس | Hams 🕌", "« " + formulas[chosenIdx] + " »")
-                  }
-              }
-
-              private fun playAssetMp3(assetRelativePath: String, volume: Float) {
-                  try {
-                      mediaPlayer?.stop()
-                      mediaPlayer?.release()
-                      mediaPlayer = null
-
-                      val loader = FlutterInjector.instance().flutterLoader()
-                      val key = loader.getLookupKeyForAsset(assetRelativePath)
-                      val afd = assets.openFd(key)
-                      val mp = MediaPlayer()
-                      mp.setAudioAttributes(
-                          AudioAttributes.Builder()
-                              .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                              .setUsage(AudioAttributes.USAGE_MEDIA)
-                              .build()
-                      )
-                      mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                      afd.close()
-                      mp.setVolume(volume, volume)
-                      mp.setOnPreparedListener { it.start() }
-                      mp.setOnCompletionListener {
-                          it.release()
-                          if (mediaPlayer == it) mediaPlayer = null
-                      }
-                      mp.prepareAsync()
-                      mediaPlayer = mp
-                  } catch (_: Exception) {}
-              }
-
-              private fun buildForegroundNotification(text: String): Notification {
-                  val channelId = "hams_bg_service_channel"
-                  val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      val channel = NotificationChannel(
-                          channelId,
-                          "خدمة هَمْس الخلفية",
-                          NotificationManager.IMPORTANCE_LOW
-                      )
-                      manager.createNotificationChannel(channel)
-                  }
-                  val intent = Intent(this, MainActivity::class.java)
-                  val pi = PendingIntent.getActivity(
-                      this, 0, intent,
-                      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                  )
-                  return NotificationCompat.Builder(this, channelId)
-                      .setSmallIcon(applicationInfo.icon)
-                      .setContentTitle("هَمْس | Hams — رفيقك للصلاة على النبي ﷺ")
-                      .setContentText(text)
-                      .setContentIntent(pi)
-                      .setOngoing(true)
-                      .build()
-              }
-
-              private fun showSalawatNotification(title: String, body: String) {
-                  val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                  val channelId = "hams_salawat_alerts"
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      val channel = NotificationChannel(
-                          channelId,
-                          "تذكيرات هَمْس الصوتية",
-                          NotificationManager.IMPORTANCE_HIGH
-                      )
-                      manager.createNotificationChannel(channel)
-                  }
-                  val builder = NotificationCompat.Builder(this, channelId)
-                      .setSmallIcon(applicationInfo.icon)
-                      .setContentTitle(title)
-                      .setContentText(body)
-                      .setPriority(NotificationCompat.PRIORITY_HIGH)
-                      .setAutoCancel(true)
-                  manager.notify((System.currentTimeMillis() % 10000).toInt(), builder.build())
-              }
-
-              override fun onDestroy() {
-                  handler.removeCallbacks(periodicRunnable)
-                  if (screenReceiver != null) {
-                      try { unregisterReceiver(screenReceiver) } catch (_: Exception) {}
-                      screenReceiver = null
-                  }
-                  mediaPlayer?.release()
-                  mediaPlayer = null
-                  super.onDestroy()
-              }
-
-              override fun onBind(intent: Intent?): IBinder? = null
-          }
-          """)
-          with open(os.path.join(kt_dir, "HamsForegroundService.kt"), "w", encoding="utf-8") as f:
-              f.write(service_kt)
-
-          main_activity_kt = pkg_line + "\n\n" + textwrap.dedent("""\
-          import android.app.NotificationChannel
-          import android.app.NotificationManager
-          import android.content.Context
-          import android.content.Intent
-          import android.content.pm.PackageManager
-          import android.net.Uri
-          import android.os.Build
-          import android.os.PowerManager
-          import android.provider.Settings
-          import androidx.core.app.ActivityCompat
-          import androidx.core.app.NotificationCompat
-          import androidx.core.content.ContextCompat
-          import io.flutter.embedding.android.FlutterActivity
-          import io.flutter.embedding.engine.FlutterEngine
-          import io.flutter.plugin.common.MethodChannel
-
-          class MainActivity: FlutterActivity() {
-              private val CHANNEL = "com.hams.salawat/native"
-
-              override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-                  super.configureFlutterEngine(flutterEngine)
-                  startHamsService()
-
-                  MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
-                      when (call.method) {
-                          "startOrUpdateService" -> {
-                              val enabled = call.argument<Boolean>("enabled") ?: true
-                              if (enabled) {
-                                  startHamsService()
-                              } else {
-                                  stopService(Intent(this, HamsForegroundService::class.java))
-                              }
-                              result.success(true)
-                          }
-                          "checkPermissions" -> {
-                              val notifGranted = if (Build.VERSION.SDK_INT >= 33) {
-                                  ContextCompat.checkSelfPermission(this, "android.permission.POST_NOTIFICATIONS") == PackageManager.PERMISSION_GRANTED
-                              } else true
-                              val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-                              val batteryGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                  pm.isIgnoringBatteryOptimizations(packageName)
-                              } else true
-                              val overlayGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                  Settings.canDrawOverlays(this)
-                              } else true
-                              result.success(mapOf(
-                                  "notif" to notifGranted,
-                                  "battery" to batteryGranted,
-                                  "overlay" to overlayGranted
-                              ))
-                          }
-                          "requestNotificationPermission" -> {
-                              if (Build.VERSION.SDK_INT >= 33) {
-                                  ActivityCompat.requestPermissions(this, arrayOf("android.permission.POST_NOTIFICATIONS"), 101)
-                              }
-                              result.success(true)
-                          }
-                          "requestBatteryExemption" -> {
-                              try {
-                                  val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                                  intent.data = Uri.parse("package:" + packageName)
-                                  startActivity(intent)
-                              } catch (e: Exception) {
-                                  openAppDetails()
-                              }
-                              result.success(true)
-                          }
-                          "requestOverlayPermission" -> {
-                              try {
-                                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                      val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName))
-                                      startActivity(intent)
-                                  }
-                              } catch (e: Exception) {
-                                  openAppDetails()
-                              }
-                              result.success(true)
-                          }
-                          "openAppSettings" -> {
-                              openAppDetails()
-                              result.success(true)
-                          }
-                          "showNotification" -> {
-                              val title = call.argument<String>("title") ?: "هَمْس | Hams"
-                              val body = call.argument<String>("body") ?: ""
-                              showNativeNotification(title, body)
-                              result.success(true)
-                          }
-                          else -> result.notImplemented()
-                      }
-                  }
-              }
-
-              private fun startHamsService() {
-                  try {
-                      val serviceIntent = Intent(this, HamsForegroundService::class.java).apply {
-                          action = "UPDATE_TIMER"
-                      }
-                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                          startForegroundService(serviceIntent)
-                      } else {
-                          startService(serviceIntent)
-                      }
-                  } catch (_: Exception) {}
-              }
-
-              private fun openAppDetails() {
-                  val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                  intent.data = Uri.parse("package:" + packageName)
-                  startActivity(intent)
-              }
-
-              private fun showNativeNotification(title: String, body: String) {
-                  val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                  val channelId = "hams_salawat_alerts"
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      val channel = NotificationChannel(channelId, "تذكيرات هَمْس الصوتية", NotificationManager.IMPORTANCE_HIGH)
-                      manager.createNotificationChannel(channel)
-                  }
-                  val builder = NotificationCompat.Builder(this, channelId)
-                      .setSmallIcon(applicationInfo.icon)
-                      .setContentTitle(title)
-                      .setContentText(body)
-                      .setPriority(NotificationCompat.PRIORITY_HIGH)
-                      .setAutoCancel(true)
-                  manager.notify((System.currentTimeMillis() % 10000).toInt(), builder.build())
-              }
-          }
-          """)
-          with open(main_kt_path, "w", encoding="utf-8") as f:
-              f.write(main_activity_kt)
-
-          # 5. كتابة كود واجهات Flutter الكامل في lib/main.dart
-          dart_code = textwrap.dedent(r"""\
-          import 'dart:async';
-          import 'dart:math';
-          import 'package:flutter/material.dart';
-          import 'package:flutter/services.dart';
-          import 'package:shared_preferences/shared_preferences.dart';
-          import 'package:audioplayers/audioplayers.dart';
-
-          const MethodChannel _nativeChannel = MethodChannel('com.hams.salawat/native');
-
-          Future<void> main() async {
-            WidgetsFlutterBinding.ensureInitialized();
-            runApp(const HamsApp());
-          }
-
-          class HamsApp extends StatelessWidget {
-            const HamsApp({super.key});
-
-            @override
-            Widget build(BuildContext context) {
-              return MaterialApp(
-                debugShowCheckedModeBanner: false,
-                title: 'هَمْس | Hams',
-                theme: ThemeData(
-                  colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF065F46)),
-                  scaffoldBackgroundColor: const Color(0xFFF4F7F5),
-                  useMaterial3: true,
-                ),
-                home: const Directionality(
-                  textDirection: TextDirection.rtl,
-                  child: HamsSplashScreen(),
-                ),
-              );
-            }
-          }
-
-          class HamsSplashScreen extends StatefulWidget {
-            const HamsSplashScreen({super.key});
-
-            @override
-            State<HamsSplashScreen> createState() => _HamsSplashScreenState();
-          }
-
-          class _HamsSplashScreenState extends State<HamsSplashScreen>
-              with SingleTickerProviderStateMixin {
-            late AnimationController _animController;
-            late Animation<double> _fadeAnim;
-
-            @override
-            void initState() {
-              super.initState();
-              _animController = AnimationController(
-                vsync: this,
-                duration: const Duration(milliseconds: 1100),
-              );
-              _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeIn);
-              _animController.forward();
-
-              Timer(const Duration(seconds: 3), () {
-                if (mounted) {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(
-                      builder: (_) => const Directionality(
-                        textDirection: TextDirection.rtl,
-                        child: HamsMainScreen(),
-                      ),
-                    ),
-                  );
-                }
-              });
-            }
-
-            @override
-            void dispose() {
-              _animController.dispose();
-              super.dispose();
-            }
-
-            @override
-            Widget build(BuildContext context) {
-              return Scaffold(
-                body: Container(
-                  width: double.infinity,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF044E38), Color(0xFF065F46), Color(0xFF047857)],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                  ),
-                  child: FadeTransition(
-                    opacity: _fadeAnim,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 110,
-                          height: 110,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(28),
-                            color: const Color(0xFF064E3B),
-                            border: Border.all(color: const Color(0xFFF59E0B), width: 3),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            'ﷺ',
-                            style: TextStyle(fontSize: 54, color: Color(0xFFFBBF24)),
-                          ),
-                        ),
-                        const SizedBox(height: 22),
-                        const Text(
-                          'هَمْس | Hams',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 34,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 32),
-                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.18),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            '« رَفِيقُكَ الدَّائِمُ لِلتَّذْكِيرِ بِالصَّلَاةِ عَلَى النَّبِيِّ ﷺ »',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Color(0xFFFEF3C7),
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 40),
-                        const CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }
-          }
-
-          class HamsMainScreen extends StatefulWidget {
-            const HamsMainScreen({super.key});
-
-            @override
-            State<HamsMainScreen> createState() => _HamsMainScreenState();
-          }
-
-          class _HamsMainScreenState extends State<HamsMainScreen>
-              with WidgetsBindingObserver {
-            final AudioPlayer _audioPlayer = AudioPlayer();
-            final Random _random = Random();
-
-            int _currentIndex = 0;
-            bool _isEnabled = true;
-            bool _unlockRemind = true;
-            bool _notificationsEnabled = true;
-            bool _randomMode = true;
-            bool _fridayDouble = true;
-            bool _quietHours = false;
-            bool _tasbihSound = true;
-            int _intervalMinutes = 15;
-            int _dailyGoal = 100;
-            int _volumePct = 80;
-            int _quietStart = 23;
-            int _quietEnd = 6;
-
-            int _todayCount = 0;
-            int _tasbihCount = 0;
-            int _totalCount = 0;
-
-            bool _permNotif = false;
-            bool _permBattery = false;
-            bool _permOverlay = false;
-
-            List<Map<String, String>> _eventLogs = [];
-
-            final List<Map<String, String>> _adhkarList = [
-              {
-                'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ',
-                'file': 'audio/voice1.mp3',
-              },
-              {
-                'display': 'صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ',
-                'file': 'audio/voice2.mp3',
-              },
-              {
-                'display': 'اللَّهُمَّ صَلِّ عَلَى نَبِيِّنَا مُحَمَّدٍ',
-                'file': 'audio/voice3.mp3',
-              },
-              {
-                'display': 'صَلِّ عَلَى النَّبِيِّ',
-                'file': 'audio/voice4.mp3',
-              },
-              {
-                'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ، كَمَا صَلَّيْتَ عَلَى إِبْرَاهِيمَ، وَبَارِكْ عَلَى مُحَمَّدٍ، وَعَلَى آلِ مُحَمَّدٍ، كَمَا بَارَكْتَ عَلَى إِبْرَاهِيمَ وَآلِ إِبْرَاهِيمَ',
-                'file': 'audio/voice5.mp3',
-              },
-              {
-                'display': 'صَلِّ عَلَى رَسُولِ اللهِ',
-                'file': 'audio/voice6.mp3',
-              },
-              {
-                'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى أَزْوَاجِهِ وَذُرِّيَّتِهِ',
-                'file': 'audio/voice7.mp3',
-              },
-              {
-                'display': 'اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ',
-                'file': 'audio/voice8.mp3',
-              },
-              {
-                'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ',
-                'file': 'audio/voice9.mp3',
-              },
-              {
-                'display': 'الصَّلَاةُ وَالسَّلَامُ عَلَيْكَ يَا رَسُولَ اللهِ',
-                'file': 'audio/voice10.mp3',
-              },
-              {
-                'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ',
-                'file': 'audio/voice11.mp3',
-              },
-              {
-                'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ النَّبِيِّ الْأُمِّيِّ وَعَلَى آلِهِ وَصَحْبِهِ وَسَلِّمْ',
-                'file': 'audio/voice12.mp3',
-              },
-            ];
-
-            Set<int> _selectedIndices = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-            Map<String, int> _weeklyCounts = {
-              'السبت': 0,
-              'الأحد': 0,
-              'الإثنين': 0,
-              'الثلاثاء': 0,
-              'الأربعاء': 0,
-              'الخميس': 0,
-              'اليوم': 0,
-            };
-
-            @override
-            void initState() {
-              super.initState();
-              WidgetsBinding.instance.addObserver(this);
-              _loadData();
-              _refreshPermissions();
-              _requestInitialNotif();
-            }
-
-            @override
-            void didChangeAppLifecycleState(AppLifecycleState state) {
-              if (state == AppLifecycleState.resumed) {
-                _loadData();
-                _refreshPermissions();
-              }
-            }
-
-            Future<void> _requestInitialNotif() async {
-              try {
-                await _nativeChannel.invokeMethod('requestNotificationPermission');
-                await _refreshPermissions();
-              } catch (_) {}
-            }
-
-            Future<void> _refreshPermissions() async {
-              try {
-                final res = await _nativeChannel.invokeMethod('checkPermissions');
-                if (res is Map && mounted) {
-                  setState(() {
-                    _permNotif = res['notif'] == true;
-                    _permBattery = res['battery'] == true;
-                    _permOverlay = res['overlay'] == true;
-                  });
-                }
-              } catch (_) {}
-            }
-
-            Future<void> _loadData() async {
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.reload();
-              final csv = prefs.getString('selectedCsv_v7') ?? '0,1,2,3,4,5,6,7,8,9,10,11';
-              final parsedSet = csv
-                  .split(',')
-                  .map((e) => int.tryParse(e.trim()) ?? -1)
-                  .where((i) => i >= 0 && i < _adhkarList.length)
-                  .toSet();
-
-              final logsCsv = prefs.getString('logsCsv_v7') ?? '';
-              final parsedLogs = <Map<String, String>>[];
-              if (logsCsv.isNotEmpty) {
-                for (final row in logsCsv.split(';;')) {
-                  final parts = row.split('|');
-                  if (parts.length >= 3) {
-                    parsedLogs.add({
-                      'title': parts[0],
-                      'detail': parts[1],
-                      'time': parts[2],
-                    });
-                  }
-                }
-              }
-              if (parsedLogs.isEmpty) {
-                parsedLogs.add({
-                  'title': 'جاهزية تطبيق هَمْس | Hams',
-                  'detail': 'تم تحميل الواجهة والمحرك الصوتي بنجاح',
-                  'time': _formatNowTime(),
-                });
-              }
-
-              setState(() {
-                _isEnabled = prefs.getBool('enabled_v7') ?? true;
-                _unlockRemind = prefs.getBool('unlockRemind_v7') ?? true;
-                _notificationsEnabled = prefs.getBool('notificationsEnabled_v7') ?? true;
-                _randomMode = prefs.getBool('randomMode_v7') ?? true;
-                _fridayDouble = prefs.getBool('fridayDouble_v7') ?? true;
-                _quietHours = prefs.getBool('quietHours_v7') ?? false;
-                _tasbihSound = prefs.getBool('tasbihSound_v7') ?? true;
-                _intervalMinutes = prefs.getInt('interval_v7') ?? 15;
-                _dailyGoal = prefs.getInt('dailyGoal_v7') ?? 100;
-                _volumePct = prefs.getInt('volumePct_v7') ?? 80;
-                _quietStart = prefs.getInt('quietStart_v7') ?? 23;
-                _quietEnd = prefs.getInt('quietEnd_v7') ?? 6;
-
-                _todayCount = prefs.getInt('todayCount_v7') ?? 0;
-                _tasbihCount = prefs.getInt('tasbihCount_v7') ?? 0;
-                _totalCount = prefs.getInt('totalCount_v7') ?? 0;
-
-                _selectedIndices = parsedSet.isEmpty
-                    ? {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
-                    : parsedSet;
-
-                _weeklyCounts = {
-                  'السبت': prefs.getInt('wk_sat_v7') ?? 0,
-                  'الأحد': prefs.getInt('wk_sun_v7') ?? 0,
-                  'الإثنين': prefs.getInt('wk_mon_v7') ?? 0,
-                  'الثلاثاء': prefs.getInt('wk_tue_v7') ?? 0,
-                  'الأربعاء': prefs.getInt('wk_wed_v7') ?? 0,
-                  'الخميس': prefs.getInt('wk_thu_v7') ?? 0,
-                  'اليوم': _todayCount,
-                };
-                _eventLogs = parsedLogs;
-              });
-            }
-
-            Future<void> _saveData() async {
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setBool('enabled_v7', _isEnabled);
-              await prefs.setBool('unlockRemind_v7', _unlockRemind);
-              await prefs.setBool('notificationsEnabled_v7', _notificationsEnabled);
-              await prefs.setBool('randomMode_v7', _randomMode);
-              await prefs.setBool('fridayDouble_v7', _fridayDouble);
-              await prefs.setBool('quietHours_v7', _quietHours);
-              await prefs.setBool('tasbihSound_v7', _tasbihSound);
-              await prefs.setInt('interval_v7', _intervalMinutes);
-              await prefs.setInt('dailyGoal_v7', _dailyGoal);
-              await prefs.setInt('volumePct_v7', _volumePct);
-              await prefs.setInt('quietStart_v7', _quietStart);
-              await prefs.setInt('quietEnd_v7', _quietEnd);
-              await prefs.setInt('todayCount_v7', _todayCount);
-              await prefs.setInt('tasbihCount_v7', _tasbihCount);
-              await prefs.setInt('totalCount_v7', _totalCount);
-              await prefs.setString(
-                'selectedCsv_v7',
-                _selectedIndices.join(','),
-              );
-              final serializedLogs = _eventLogs
-                  .take(25)
-                  .map((e) => '${e['title']}|${e['detail']}|${e['time']}')
-                  .join(';;');
-              await prefs.setString('logsCsv_v7', serializedLogs);
-
-              try {
-                await _nativeChannel.invokeMethod('startOrUpdateService', {
-                  'enabled': _isEnabled,
-                });
-              } catch (_) {}
-            }
-
-            String _formatNowTime() {
-              final now = DateTime.now();
-              final h = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
-              final m = now.minute.toString().padLeft(2, '0');
-              final s = now.second.toString().padLeft(2, '0');
-              final suffix = now.hour >= 12 ? 'م' : 'ص';
-              return '$h:$m:$s $suffix';
-            }
-
-            void _addEventLog(String title, String detail) {
-              setState(() {
-                _eventLogs.insert(0, {
-                  'title': title,
-                  'detail': detail,
-                  'time': _formatNowTime(),
-                });
-                if (_eventLogs.length > 25) {
-                  _eventLogs = _eventLogs.sublist(0, 25);
-                }
-              });
-            }
-
-            Future<void> _playRealMp3Dhikr(int index, {String source = 'تذكير يدوي ♥'}) async {
-              final item = _adhkarList[index];
-              HapticFeedback.mediumImpact();
-
-              try {
-                await _audioPlayer.stop();
-                await _audioPlayer.setVolume((_volumePct / 100.0).clamp(0.05, 1.0));
-                await _audioPlayer.play(AssetSource(item['file']!));
-              } catch (_) {
-                SystemSound.play(SystemSoundType.alert);
-              }
-
-              setState(() {
-                _todayCount++;
-                _totalCount++;
-                _weeklyCounts['اليوم'] = _todayCount;
-              });
-              _addEventLog(
-                'همسة: ${item['display']}',
-                '$source — الصوت: $_volumePct%',
-              );
-              await _saveData();
-
-              if (_notificationsEnabled) {
-                try {
-                  await _nativeChannel.invokeMethod('showNotification', {
-                    'title': 'هَمْس | Hams 🕌',
-                    'body': '« ${item['display']!} »',
-                  });
-                } catch (_) {}
-              }
-
-              if (mounted) {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    backgroundColor: const Color(0xFF065F46),
-                    content: Text(
-                      '🔊 « ${item['display']} »',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-                    ),
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              }
-            }
-
-            Future<void> _triggerRandomSalawat({String source = 'تذكير يدوي ♥'}) async {
-              final pool = _selectedIndices.isNotEmpty
-                  ? _selectedIndices.toList()
-                  : List.generate(_adhkarList.length, (i) => i);
-              final chosenIndex = _randomMode
-                  ? pool[_random.nextInt(pool.length)]
-                  : pool.first;
-              await _playRealMp3Dhikr(chosenIndex, source: source);
-            }
-
-            @override
-            void dispose() {
-              WidgetsBinding.instance.removeObserver(this);
-              _audioPlayer.dispose();
-              super.dispose();
-            }
-
-            @override
-            Widget build(BuildContext context) {
-              final pages = [
-                _buildHomeTab(),
-                _buildTasbihTab(),
-                _buildStatsTab(),
-                _buildSettingsTab(),
-                _buildPrivacyTab(),
-              ];
-
-              return Scaffold(
-                backgroundColor: const Color(0xFFF4F7F5),
-                appBar: PreferredSize(
-                  preferredSize: const Size.fromHeight(64),
-                  child: Container(
-                    color: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: SafeArea(
-                      bottom: false,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 42,
-                                height: 42,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF064E3B),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                alignment: Alignment.center,
-                                child: const Text(
-                                  'ﷺ',
-                                  style: TextStyle(color: Color(0xFFFBBF24), fontSize: 22),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              const Text(
-                                'هَمْس | Hams',
-                                style: TextStyle(
-                                  color: Color(0xFF064E3B),
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFECFDF5),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color(0xFFA7F3D0)),
-                            ),
-                            child: Text(
-                              '🔊 صوت مستقل: $_volumePct%',
-                              style: const TextStyle(
-                                color: Color(0xFF065F46),
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                body: pages[_currentIndex],
-                bottomNavigationBar: NavigationBar(
-                  backgroundColor: Colors.white,
-           
+          pkg_line = open(main_kt_path, "r", encoding="utf-8").readline().strip()
+
+          service_lines = [
+              pkg_line,
+              'import android.app.*',
+              'import android.content.*',
+              'import android.content.pm.ServiceInfo',
+              'import android.media.*',
+              'import android.os.*',
+              'import androidx.core.app.NotificationCompat',
+              'import io.flutter.FlutterInjector',
+              'import java.text.SimpleDateFormat',
+              'import java.util.*',
+              'class HamsForegroundService : Service() {',
+              '    private var screenReceiver: BroadcastReceiver? = null',
+              '    private var mediaPlayer: MediaPlayer? = null',
+              '    private val handler = Handler(Looper.getMainLooper())',
+              '    private var lastUnlockPlayTime = 0L',
+              '    private val random = Random()',
+              '    private val formulas = arrayOf("اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ","صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ","اللَّهُمَّ صَلِّ عَلَى نَبِيِّنَا مُحَمَّدٍ","صَلِّ عَلَى النَّبِيِّ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ، كَمَا صَلَّيْتَ عَلَى إِبْرَاهِيمَ","صَلِّ عَلَى رَسُولِ اللهِ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى أَزْوَاجِهِ وَذُرِّيَّتِهِ","اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ","الصَّلَاةُ وَالسَّلَامُ عَلَيْكَ يَا رَسُولَ اللهِ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ","اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ النَّبِيِّ الْأُمِّيِّ وَعَلَى آلِهِ وَصَحْبِهِ وَسَلِّمْ")',
+              '    private val periodicRunnable = object : Runnable {',
+              '        override fun run() {',
+              '            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)',
+              '            if (prefs.getBoolean("flutter.enabled_v7", true)) triggerSalawat("تذكير دوري ⏱️")',
+              '            scheduleNextTick()',
+              '        }',
+              '    }',
+              '    override fun onCreate() {',
+              '        super.onCreate()',
+              '        val notif = buildNotif("التذكير الصوتي نشط في الخلفية وعند فتح الشاشة")',
+              '        if (Build.VERSION.SDK_INT >= 34) startForeground(7701, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK) else startForeground(7701, notif)',
+              '        registerUnlock()',
+              '        scheduleNextTick()',
+              '    }',
+              '    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {',
+              '        if (intent?.action == "UPDATE_TIMER") scheduleNextTick()',
+              '        return START_STICKY',
+              '    }',
+              '    private fun scheduleNextTick() {',
+              '        handler.removeCallbacks(periodicRunnable)',
+              '        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)',
+              '        if (!prefs.getBoolean("flutter.enabled_v7", true)) return',
+              '        val baseMins = prefs.getLong("flutter.interval_v7", 15L).toInt().coerceAtLeast(2)',
+              '        val isFri = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) == Calendar.FRIDAY',
+              '        val mins = if (prefs.getBoolean("flutter.fridayDouble_v7", true) && isFri) (baseMins / 2).coerceAtLeast(2) else baseMins',
+              '        handler.postDelayed(periodicRunnable, mins * 60 * 1000L)',
+              '    }',
+              '    private fun registerUnlock() {',
+              '        if (screenReceiver != null) return',
+              '        screenReceiver = object : BroadcastReceiver() {',
+              '            override fun onReceive(c: Context?, i: Intent?) {',
+              '                val act = i?.action ?: return',
+              '                if (act == Intent.ACTION_USER_PRESENT || act == Intent.ACTION_SCREEN_ON) {',
+              '                    val now = System.currentTimeMillis()',
+              '                    if (now - lastUnlockPlayTime < 8000L) return',
+              '                    val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)',
+              '                    if (prefs.getBoolean("flutter.enabled_v7", true) && prefs.getBoolean("flutter.unlockRemind_v7", true)) {',
+              '                        lastUnlockPlayTime = now',
+              '                        triggerSalawat("عند فتح قفل الشاشة 🔓")',
+              '                    }',
+              '                }',
+              '            }',
+              '        }',
+              '        val f = IntentFilter().apply { addAction(Intent.ACTION_USER_PRESENT); addAction(Intent.ACTION_SCREEN_ON) }',
+              '        if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenReceiver, f, Context.RECEIVER_EXPORTED) else registerReceiver(screenReceiver, f)',
+              '    }',
+              '    private fun triggerSalawat(src: String) {',
+              '        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)',
+              '        if (prefs.getBoolean("flutter.quietHours_v7", false)) {',
+              '            val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)',
+              '            if (h >= 23 || h < 6) return',
+              '        }',
+              '        val csv = prefs.getString("flutter.selectedCsv_v7", "0,1,2,3,4,5,6,7,8,9,10,11") ?: "0,1,2,3,4,5,6,7,8,9,10,11"',
+              '        val list = csv.split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it in 0..11 }',
+              '        val pool = if (list.isEmpty()) (0..11).toList() else list',
+              '        val idx = if (prefs.getBoolean("flutter.randomMode_v7", true)) pool[random.nextInt(pool.size)] else pool.first()',
+              '        val vol = (prefs.getLong("flutter.volumePct_v7", 80L).toFloat().coerceIn(10f, 100f)) / 100f',
+              '        playMp3("audio/voice" + (idx + 1) + ".mp3", vol)',
+              '        val today = prefs.getLong("flutter.todayCount_v7", 0L) + 1L',
+              '        val total = prefs.getLong("flutter.totalCount_v7", 0L) + 1L',
+              '        val tStr = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())',
+              '        val item = "همسة: " + formulas[idx] + "|" + src + " — الصوت: " + (vol*100).toInt() + "%|" + tStr',
+              '        val old = prefs.getString("flutter.logsCsv_v7", "") ?: ""',
+              '        val comb = if (old.isEmpty()) item else (item + ";;" + old)',
+              '        prefs.edit().putLong("flutter.todayCount_v7", today).putLong("flutter.totalCount_v7", total).putString("flutter.logsCsv_v7", comb.split(";;").take(25).joinToString(";;")).apply()',
+              '    }',
+              '    private fun playMp3(path: String, vol: Float) {',
+              '        try {',
+              '            mediaPlayer?.stop(); mediaPlayer?.release(); mediaPlayer = null',
+              '            val key = FlutterInjector.instance().flutterLoader().getLookupKeyForAsset(path)',
+              '            val afd = assets.openFd(key)',
+              '            val mp = MediaPlayer()',
+              '            mp.setAudioAttributes(AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).setUsage(AudioAttributes.USAGE_MEDIA).build())',
+              '            mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length); afd.close()',
+              '            mp.setVolume(vol, vol); mp.setOnPreparedListener { it.start() }; mp.setOnCompletionListener { it.release() }; mp.prepareAsync()',
+              '            mediaPlayer = mp',
+              '        } catch (_: Exception) {}',
+              '    }',
+              '    private fun buildNotif(txt: String): Notification {',
+              '        val cid = "hams_bg"',
+              '        val m = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager',
+              '        if (Build.VERSION.SDK_INT >= 26) m.createNotificationChannel(NotificationChannel(cid, "Hams Service", NotificationManager.IMPORTANCE_LOW))',
+              '        val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)',
+              '        return NotificationCompat.Builder(this, cid).setSmallIcon(applicationInfo.icon).setContentTitle("هَمْس | Hams").setContentText(txt).setContentIntent(pi).setOngoing(true).build()',
+              '    }',
+              '    override fun onDestroy() {',
+              '        handler.removeCallbacks(periodicRunnable)',
+              '        if (screenReceiver != null) { try { unregisterReceiver(screenReceiver) } catch (_: Exception) {} }',
+              '        mediaPlayer?.release(); super.onDestroy()',
+              '    }',
+              '    override fun onBind(intent: Intent?): IBinder? = null',
+              '}'
+          ]
+          open(os.path.join(kt_dir, "HamsForegroundService.kt"), "w", encoding="utf-8").write("\n".join(service_lines))
+
+          main_lines = [
+              pkg_line,
+              'import android.app.*',
+              'import android.content.*',
+              'import android.content.pm.PackageManager',
+              'import android.net.Uri',
+              'import android.os.*',
+              'import android.provider.Settings',
+              'import androidx.core.app.ActivityCompat',
+              'import androidx.core.app.NotificationCompat',
+              'import androidx.core.content.ContextCompat',
+              'import io.flutter.embedding.android.FlutterActivity',
+              'import io.flutter.embedding.engine.FlutterEngine',
+              'import io.flutter.plugin.common.MethodChannel',
+              'class MainActivity: FlutterActivity() {',
+              '    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {',
+              '        super.configureFlutterEngine(flutterEngine)',
+              '        startHamsService()',
+              '        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.hams.salawat/native").setMethodCallHandler { call, result ->',
+              '            when (call.method) {',
+              '                "startOrUpdateService" -> {',
+              '                    if (call.argument<Boolean>("enabled") ?: true) startHamsService() else stopService(Intent(this, HamsForegroundService::class.java))',
+              '                    result.success(true)',
+              '                }',
+              '                "checkPermissions" -> {',
+              '                    val n = if (Build.VERSION.SDK_INT >= 33) ContextCompat.checkSelfPermission(this, "android.permission.POST_NOTIFICATIONS") == PackageManager.PERMISSION_GRANTED else true',
+              '                    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager',
+              '                    val b = if (Build.VERSION.SDK_INT >= 23) pm.isIgnoringBatteryOptimizations(packageName) else true',
+              '                    val o = if (Build.VERSION.SDK_INT >= 23) Settings.canDrawOverlays(this) else true',
+              '                    result.success(mapOf("notif" to n, "battery" to b, "overlay" to o))',
+              '                }',
+              '                "requestNotificationPermission" -> {',
+              '                    if (Build.VERSION.SDK_INT >= 33) ActivityCompat.requestPermissions(this, arrayOf("android.permission.POST_NOTIFICATIONS"), 101)',
+              '                    result.success(true)',
+              '                }',
+              '                "requestBatteryExemption" -> {',
+              '                    try { startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + packageName))) } catch (_: Exception) {}',
+              '                    result.success(true)',
+              '                }',
+              '                "requestOverlayPermission" -> {',
+              '                    try { if (Build.VERSION.SDK_INT >= 23) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName))) } catch (_: Exception) {}',
+              '                    result.success(true)',
+              '                }',
+              '                "showNotification" -> {',
+              '                    val m = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager',
+              '                    if (Build.VERSION.SDK_INT >= 26) m.createNotificationChannel(NotificationChannel("hams_alerts", "Hams Alerts", NotificationManager.IMPORTANCE_HIGH))',
+              '                    val nb = NotificationCompat.Builder(this, "hams_alerts").setSmallIcon(applicationInfo.icon).setContentTitle(call.argument<String>("title") ?: "هَمْس").setContentText(call.argument<String>("body") ?: "").setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true)',
+              '                    m.notify((System.currentTimeMillis() % 10000).toInt(), nb.build())',
+              '                    result.success(true)',
+              '                }',
+              '                else -> result.notImplemented()',
+              '            }',
+              '        }',
+              '    }',
+              '    private fun startHamsService() {',
+              '        try {',
+              '            val i = Intent(this, HamsForegroundService::class.java).apply { action = "UPDATE_TIMER" }',
+              '            if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)',
+              '        } catch (_: Exception) {}',
+              '    }',
+              '}'
+          ]
+          open(main_kt_path, "w", encoding="utf-8").write("\n".join(main_lines))
+          print("Native Android files configured successfully!")
+
+      - name: 7. Compile Release APK
+        run: |
+          flutter pub get
+          flutter build apk --release
+          ls -lh build/app/outputs/flutter-apk/app-release.apk
+
+      - name: 8. Upload Hams APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hams-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
