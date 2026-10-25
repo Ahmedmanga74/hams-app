@@ -164,7 +164,6 @@ class _HamsMainScreenState extends State<HamsMainScreen>
   bool _randomMode = true;
   bool _fridayDouble = true;
   bool _quietHours = false;
-  bool _tasbihSound = true;
   int _intervalMinutes = 15;
   int _dailyGoal = 100;
   int _volumePct = 80;
@@ -178,8 +177,6 @@ class _HamsMainScreenState extends State<HamsMainScreen>
   bool _permNotif = false;
   bool _permBattery = false;
   bool _permOverlay = false;
-
-  List<Map<String, String>> _eventLogs = [];
 
   final List<Map<String, String>> _adhkarList = [
     {'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ', 'file': 'audio/voice1.mp3'},
@@ -247,109 +244,67 @@ class _HamsMainScreenState extends State<HamsMainScreen>
   Future<void> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
-    final csv = prefs.getString('selectedCsv_v7') ?? '0,1,2,3,4,5,6,7,8,9,10,11';
+    final csv = prefs.getString('selectedCsv_v8') ?? '0,1,2,3,4,5,6,7,8,9,10,11';
     final parsedSet = csv
         .split(',')
         .map((e) => int.tryParse(e.trim()) ?? -1)
         .where((i) => i >= 0 && i < _adhkarList.length)
         .toSet();
 
-    final logsCsv = prefs.getString('logsCsv_v7') ?? '';
-    final parsedLogs = <Map<String, String>>[];
-    if (logsCsv.isNotEmpty) {
-      for (final row in logsCsv.split(';;')) {
-        final parts = row.split('|');
-        if (parts.length >= 3) {
-          parsedLogs.add({'title': parts[0], 'detail': parts[1], 'time': parts[2]});
-        }
-      }
-    }
-    if (parsedLogs.isEmpty) {
-      parsedLogs.add({
-        'title': 'جاهزية تطبيق هَمْس | Hams',
-        'detail': 'تم تحميل الواجهة والمحرك الصوتي بنجاح',
-        'time': _formatNowTime(),
-      });
-    }
-
     setState(() {
-      _isEnabled = prefs.getBool('enabled_v7') ?? true;
-      _unlockRemind = prefs.getBool('unlockRemind_v7') ?? true;
-      _notificationsEnabled = prefs.getBool('notificationsEnabled_v7') ?? true;
-      _randomMode = prefs.getBool('randomMode_v7') ?? true;
-      _fridayDouble = prefs.getBool('fridayDouble_v7') ?? true;
-      _quietHours = prefs.getBool('quietHours_v7') ?? false;
-      _tasbihSound = prefs.getBool('tasbihSound_v7') ?? true;
-      _intervalMinutes = prefs.getInt('interval_v7') ?? 15;
-      _dailyGoal = prefs.getInt('dailyGoal_v7') ?? 100;
-      _volumePct = prefs.getInt('volumePct_v7') ?? 80;
-      _quietStart = prefs.getInt('quietStart_v7') ?? 23;
-      _quietEnd = prefs.getInt('quietEnd_v7') ?? 6;
+      _isEnabled = prefs.getBool('enabled_v8') ?? true;
+      _unlockRemind = prefs.getBool('unlockRemind_v8') ?? true;
+      _notificationsEnabled = prefs.getBool('notificationsEnabled_v8') ?? true;
+      _randomMode = prefs.getBool('randomMode_v8') ?? true;
+      _fridayDouble = prefs.getBool('fridayDouble_v8') ?? true;
+      _quietHours = prefs.getBool('quietHours_v8') ?? false;
+      _intervalMinutes = prefs.getInt('interval_v8') ?? 15;
+      _dailyGoal = prefs.getInt('dailyGoal_v8') ?? 100;
+      _volumePct = prefs.getInt('volumePct_v8') ?? 80;
+      _quietStart = prefs.getInt('quietStart_v8') ?? 23;
+      _quietEnd = prefs.getInt('quietEnd_v8') ?? 6;
 
-      _todayCount = prefs.getInt('todayCount_v7') ?? 0;
-      _tasbihCount = prefs.getInt('tasbihCount_v7') ?? 0;
-      _totalCount = prefs.getInt('totalCount_v7') ?? 0;
+      _todayCount = prefs.getInt('todayCount_v8') ?? 0;
+      _tasbihCount = prefs.getInt('tasbihCount_v8') ?? 0;
+      _totalCount = prefs.getInt('totalCount_v8') ?? 0;
 
       _selectedIndices = parsedSet.isEmpty ? {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11} : parsedSet;
       _weeklyCounts = {
-        'السبت': prefs.getInt('wk_sat_v7') ?? 0,
-        'الأحد': prefs.getInt('wk_sun_v7') ?? 0,
-        'الإثنين': prefs.getInt('wk_mon_v7') ?? 0,
-        'الثلاثاء': prefs.getInt('wk_tue_v7') ?? 0,
-        'الأربعاء': prefs.getInt('wk_wed_v7') ?? 0,
-        'الخميس': prefs.getInt('wk_thu_v7') ?? 0,
+        'السبت': prefs.getInt('wk_sat_v8') ?? 0,
+        'الأحد': prefs.getInt('wk_sun_v8') ?? 0,
+        'الإثنين': prefs.getInt('wk_mon_v8') ?? 0,
+        'الثلاثاء': prefs.getInt('wk_tue_v8') ?? 0,
+        'الأربعاء': prefs.getInt('wk_wed_v8') ?? 0,
+        'الخميس': prefs.getInt('wk_thu_v8') ?? 0,
         'اليوم': _todayCount,
       };
-      _eventLogs = parsedLogs;
     });
   }
 
   Future<void> _saveData() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('enabled_v7', _isEnabled);
-    await prefs.setBool('unlockRemind_v7', _unlockRemind);
-    await prefs.setBool('notificationsEnabled_v7', _notificationsEnabled);
-    await prefs.setBool('randomMode_v7', _randomMode);
-    await prefs.setBool('fridayDouble_v7', _fridayDouble);
-    await prefs.setBool('quietHours_v7', _quietHours);
-    await prefs.setBool('tasbihSound_v7', _tasbihSound);
-    await prefs.setInt('interval_v7', _intervalMinutes);
-    await prefs.setInt('dailyGoal_v7', _dailyGoal);
-    await prefs.setInt('volumePct_v7', _volumePct);
-    await prefs.setInt('quietStart_v7', _quietStart);
-    await prefs.setInt('quietEnd_v7', _quietEnd);
-    await prefs.setInt('todayCount_v7', _todayCount);
-    await prefs.setInt('tasbihCount_v7', _tasbihCount);
-    await prefs.setInt('totalCount_v7', _totalCount);
-    await prefs.setString('selectedCsv_v7', _selectedIndices.join(','));
-    final serializedLogs = _eventLogs
-        .take(25)
-        .map((e) => '${e['title']}|${e['detail']}|${e['time']}')
-        .join(';;');
-    await prefs.setString('logsCsv_v7', serializedLogs);
+    await prefs.setBool('enabled_v8', _isEnabled);
+    await prefs.setBool('unlockRemind_v8', _unlockRemind);
+    await prefs.setBool('notificationsEnabled_v8', _notificationsEnabled);
+    await prefs.setBool('randomMode_v8', _randomMode);
+    await prefs.setBool('fridayDouble_v8', _fridayDouble);
+    await prefs.setBool('quietHours_v8', _quietHours);
+    await prefs.setInt('interval_v8', _intervalMinutes);
+    await prefs.setInt('dailyGoal_v8', _dailyGoal);
+    await prefs.setInt('volumePct_v8', _volumePct);
+    await prefs.setInt('quietStart_v8', _quietStart);
+    await prefs.setInt('quietEnd_v8', _quietEnd);
+    await prefs.setInt('todayCount_v8', _todayCount);
+    await prefs.setInt('tasbihCount_v8', _tasbihCount);
+    await prefs.setInt('totalCount_v8', _totalCount);
+    await prefs.setString('selectedCsv_v8', _selectedIndices.join(','));
 
     try {
       await _nativeChannel.invokeMethod('startOrUpdateService', {'enabled': _isEnabled});
     } catch (_) {}
   }
 
-  String _formatNowTime() {
-    final now = DateTime.now();
-    final h = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
-    final m = now.minute.toString().padLeft(2, '0');
-    final s = now.second.toString().padLeft(2, '0');
-    final suffix = now.hour >= 12 ? 'م' : 'ص';
-    return '$h:$m:$s $suffix';
-  }
-
-  void _addEventLog(String title, String detail) {
-    setState(() {
-      _eventLogs.insert(0, {'title': title, 'detail': detail, 'time': _formatNowTime()});
-      if (_eventLogs.length > 25) _eventLogs = _eventLogs.sublist(0, 25);
-    });
-  }
-
-  Future<void> _playRealMp3Dhikr(int index, {String source = 'تذكير يدوي ♥'}) async {
+  Future<void> _playRealMp3Dhikr(int index) async {
     final item = _adhkarList[index];
     HapticFeedback.mediumImpact();
 
@@ -366,7 +321,6 @@ class _HamsMainScreenState extends State<HamsMainScreen>
       _totalCount++;
       _weeklyCounts['اليوم'] = _todayCount;
     });
-    _addEventLog('همسة: ${item['display']}', '$source — الصوت: $_volumePct%');
     await _saveData();
 
     if (_notificationsEnabled) {
@@ -393,12 +347,12 @@ class _HamsMainScreenState extends State<HamsMainScreen>
     }
   }
 
-  Future<void> _triggerRandomSalawat({String source = 'تذكير يدوي ♥'}) async {
+  Future<void> _triggerRandomSalawat() async {
     final pool = _selectedIndices.isNotEmpty
         ? _selectedIndices.toList()
         : List.generate(_adhkarList.length, (i) => i);
     final chosenIndex = _randomMode ? pool[_random.nextInt(pool.length)] : pool.first;
-    await _playRealMp3Dhikr(chosenIndex, source: source);
+    await _playRealMp3Dhikr(chosenIndex);
   }
 
   @override
@@ -610,7 +564,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
-                  onPressed: () => _triggerRandomSalawat(source: 'تذكير يدوي ♥'),
+                  onPressed: () => _triggerRandomSalawat(),
                   child: const Text(
                     '♥ صلِّ على النبي الآن (مع سماع الهمسة)',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
@@ -636,7 +590,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 children: [
                   const Expanded(
                     child: Text(
-                      '🎙️ صيغ الصلاة والأذكار (مثل تطبيق الشفيع)',
+                      '🎙️ صيغ الصلاة والأذكار',
                       style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF064E3B)),
                     ),
                   ),
@@ -693,16 +647,9 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                       Expanded(
                         child: InkWell(
                           onTap: () => _playRealMp3Dhikr(i),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${isSelected ? "✓ " : ""}« ${_adhkarList[i]['display']!} »',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF064E3B), height: 1.4),
-                              ),
-                              const SizedBox(height: 4),
-                              Text('ملف التطبيق: assets/audio/voice${i + 1}.mp3', style: const TextStyle(fontSize: 10.5, color: Colors.grey)),
-                            ],
+                          child: Text(
+                            '${isSelected ? "✓ " : ""}« ${_adhkarList[i]['display']!} »',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF064E3B), height: 1.4),
                           ),
                         ),
                       ),
@@ -770,7 +717,6 @@ class _HamsMainScreenState extends State<HamsMainScreen>
               GestureDetector(
                 onTap: () {
                   HapticFeedback.lightImpact();
-                  if (_tasbihSound) SystemSound.play(SystemSoundType.click);
                   setState(() {
                     _tasbihCount++;
                     _todayCount++;
@@ -798,28 +744,6 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                   ),
                 ),
               ),
-              const SizedBox(height: 26),
-              const Divider(height: 1),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('الإجمالي الكلي: $_totalCount', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF374151))),
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: _tasbihSound,
-                        activeColor: const Color(0xFF2563EB),
-                        onChanged: (v) {
-                          setState(() => _tasbihSound = v ?? true);
-                          _saveData();
-                        },
-                      ),
-                      const Text('نبرة مسبحة هادئة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
-                    ],
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -842,7 +766,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                   children: [
                     const Text('حصاد اليوم', style: TextStyle(color: Colors.grey, fontSize: 12.5)),
                     const SizedBox(height: 6),
-                    Text('$_todayCount', style: const TextStyle(color: Color(0xFF064E3B), fontSize: 30, fontWeight: FontWeight.w900)),
+                    Text('$_todayCount', style: const TextStyle(color: Color(0xFF065F46), fontSize: 30, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 4),
                     Text('الهدف اليومي: $_dailyGoal', style: const TextStyle(color: Colors.grey, fontSize: 11)),
                   ],
@@ -856,11 +780,11 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE5E7EB))),
                 child: Column(
                   children: [
-                    const Text('الإجمالي الكلي', style: TextStyle(color: Colors.grey, fontSize: 12.5)),
+                    const Text('الحصاد الكلي', style: TextStyle(color: Colors.grey, fontSize: 12.5)),
                     const SizedBox(height: 6),
                     Text('$_totalCount', style: const TextStyle(color: Color(0xFFB45309), fontSize: 30, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 4),
-                    const Text('صلاة على النبي ﷺ', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                    const Text('منذ تثبيت التطبيق', style: TextStyle(color: Colors.grey, fontSize: 11)),
                   ],
                 ),
               ),
@@ -876,7 +800,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
               const Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('📊 نشاطك خلال آخر 7 أيام', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF064E3B))),
+                  Text('📊 نشاطك خلال آخر 7 أيام', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF065F46))),
                   Text('تحديث فوري', style: TextStyle(color: Color(0xFF15803D), fontSize: 11.5, fontWeight: FontWeight.bold)),
                 ],
               ),
@@ -895,68 +819,19 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                             value: ratio,
                             minHeight: 11,
                             backgroundColor: const Color(0xFFF3F4F6),
-                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF064E3B)),
+                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF065F46)),
                           ),
                         ),
                       ),
                       const SizedBox(width: 10),
                       SizedBox(
                         width: 34,
-                        child: Text('${entry.value}', textAlign: TextAlign.left, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5, color: Color(0xFF064E3B))),
+                        child: Text('${entry.value}', textAlign: TextAlign.left, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5, color: Color(0xFF065F46))),
                       ),
                     ],
                   ),
                 );
               }),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('🕒 سجل التذكيرات والأحداث', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF064E3B))),
-                  TextButton(
-                    onPressed: () {
-                      setState(() => _eventLogs.clear());
-                      _saveData();
-                    },
-                    child: const Text('مسح السجل', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              if (_eventLogs.isEmpty)
-                const Padding(padding: EdgeInsets.all(16), child: Text('لا توجد أحداث مسجلة بعد', style: TextStyle(color: Colors.grey)))
-              else
-                ..._eventLogs.map((log) {
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: const Color(0xFFF9FAFB), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE5E7EB))),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(log['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
-                              const SizedBox(height: 2),
-                              Text(log['detail'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                            ],
-                          ),
-                        ),
-                        Text(log['time'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  );
-                }),
             ],
           ),
         ),
@@ -974,11 +849,11 @@ class _HamsMainScreenState extends State<HamsMainScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('⚙️ طريقة التذكير والتكرار', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Color(0xFF064E3B))),
+              const Text('⚙️ طريقة التذكير والتكرار', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Color(0xFF065F46))),
               const SizedBox(height: 10),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
-                activeColor: const Color(0xFF064E3B),
+                activeColor: const Color(0xFF065F46),
                 value: _unlockRemind,
                 title: const Text('التذكير عند فتح قفل الشاشة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
                 subtitle: const Text('تشغيل الهمسة الصوتية فور فتح شاشة الهاتف', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
@@ -1012,7 +887,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
               const Divider(),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
-                activeColor: const Color(0xFF064E3B),
+                activeColor: const Color(0xFF065F46),
                 value: _fridayDouble,
                 title: const Text('مضاعفة التذكير يوم الجمعة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
                 subtitle: const Text('تقليص الفترة الزمنية للنصف يوم الجمعة المبارك', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
@@ -1055,15 +930,15 @@ class _HamsMainScreenState extends State<HamsMainScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('🔊 مستوى صوت الهمسة المستقل', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF064E3B))),
-                  Text('$_volumePct%', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF064E3B))),
+                  const Text('🔊 مستوى صوت الهمسة المستقل', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF065F46))),
+                  Text('$_volumePct%', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF065F46))),
                 ],
               ),
               Slider(
                 value: _volumePct.toDouble(),
                 min: 10,
                 max: 100,
-                activeColor: const Color(0xFF064E3B),
+                activeColor: const Color(0xFF065F46),
                 onChanged: (val) {
                   setState(() => _volumePct = val.round());
                   _audioPlayer.setVolume((_volumePct / 100.0).clamp(0.05, 1.0));
@@ -1083,9 +958,9 @@ class _HamsMainScreenState extends State<HamsMainScreen>
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),
           child: CheckboxListTile(
             contentPadding: EdgeInsets.zero,
-            activeColor: const Color(0xFF064E3B),
+            activeColor: const Color(0xFF065F46),
             value: _quietHours,
-            title: const Text('🌙 أوقات الهدوء (عدم الإزعاج)', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF064E3B))),
+            title: const Text('🌙 أوقات الهدوء (عدم الإزعاج)', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF065F46))),
             subtitle: Text(
               _quietHours ? 'يتم كتم الصوت تلقائياً من $_quietStart:00 إلى $_quietEnd:00' : 'التطبيق يعمل حالياً 24 ساعة بدون توقف',
               style: const TextStyle(fontSize: 11.5, color: Colors.grey),
@@ -1103,11 +978,11 @@ class _HamsMainScreenState extends State<HamsMainScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('🛡️ أذونات الهاتف والعمل في الخلفية', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Color(0xFF064E3B))),
+              const Text('🛡️ أذونات الهاتف والعمل في الخلفية', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Color(0xFF065F46))),
               const SizedBox(height: 10),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                activeColor: const Color(0xFF064E3B),
+                activeColor: const Color(0xFF065F46),
                 value: _permOverlay,
                 title: const Text('العرض فوق التطبيقات الأخرى', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
                 subtitle: const Padding(
@@ -1126,7 +1001,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
               const Divider(),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                activeColor: const Color(0xFF064E3B),
+                activeColor: const Color(0xFF065F46),
                 value: _permNotif && _notificationsEnabled,
                 title: const Text('إذن الإشعارات والتنبيهات الصوتية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
                 subtitle: Text(
@@ -1145,7 +1020,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
               const Divider(),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                activeColor: const Color(0xFF064E3B),
+                activeColor: const Color(0xFF065F46),
                 value: _permBattery,
                 title: const Text('العمل في الخلفية دون قيود البطارية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
                 subtitle: const Text('يضمن استمرار نطق الذكر عند فتح الشاشة وفي الخلفية', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
@@ -1166,19 +1041,6 @@ class _HamsMainScreenState extends State<HamsMainScreen>
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFA7F3D0))),
-          child: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('🛡️ التزام كامل بخصوصيتك (Data Not Collected)', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),
-              SizedBox(height: 6),
-              Text('متوافق مع معايير الخصوصية والأمان في متجري Google Play و Apple App Store.', style: TextStyle(fontSize: 12, color: Color(0xFF065F46))),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),
