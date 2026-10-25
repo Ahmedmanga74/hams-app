@@ -3,7 +3,6 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:audioplayers/audioplayers.dart';
 
 const MethodChannel _nativeChannel = MethodChannel('com.hams.salawat/native');
 
@@ -154,7 +153,6 @@ class HamsMainScreen extends StatefulWidget {
 
 class _HamsMainScreenState extends State<HamsMainScreen>
     with WidgetsBindingObserver {
-  final AudioPlayer _audioPlayer = AudioPlayer();
   final Random _random = Random();
 
   int _currentIndex = 0;
@@ -178,19 +176,19 @@ class _HamsMainScreenState extends State<HamsMainScreen>
   bool _permBattery = false;
   bool _permOverlay = false;
 
-  final List<Map<String, String>> _adhkarList = [
-    {'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ', 'file': 'audio/voice1.mp3'},
-    {'display': 'صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ', 'file': 'audio/voice2.mp3'},
-    {'display': 'اللَّهُمَّ صَلِّ عَلَى نَبِيِّنَا مُحَمَّدٍ', 'file': 'audio/voice3.mp3'},
-    {'display': 'صَلِّ عَلَى النَّبِيِّ', 'file': 'audio/voice4.mp3'},
-    {'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ، كَمَا صَلَّيْتَ عَلَى إِبْرَاهِيمَ، وَبَارِكْ عَلَى مُحَمَّدٍ، وَعَلَى آلِ مُحَمَّدٍ، كَمَا بَارَكْتَ عَلَى إِبْرَاهِيمَ وَآلِ إِبْرَاهِيمَ', 'file': 'audio/voice5.mp3'},
-    {'display': 'صَلِّ عَلَى رَسُولِ اللهِ', 'file': 'audio/voice6.mp3'},
-    {'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى أَزْوَاجِهِ وَذُرِّيَّتِهِ', 'file': 'audio/voice7.mp3'},
-    {'display': 'اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ', 'file': 'audio/voice8.mp3'},
-    {'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ', 'file': 'audio/voice9.mp3'},
-    {'display': 'الصَّلَاةُ وَالسَّلَامُ عَلَيْكَ يَا رَسُولَ اللهِ', 'file': 'audio/voice10.mp3'},
-    {'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ', 'file': 'audio/voice11.mp3'},
-    {'display': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ النَّبِيِّ الْأُمِّيِّ وَعَلَى آلِهِ وَصَحْبِهِ وَسَلِّمْ', 'file': 'audio/voice12.mp3'},
+  final List<String> _adhkarList = [
+    'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ',
+    'صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ',
+    'اللَّهُمَّ صَلِّ عَلَى نَبِيِّنَا مُحَمَّدٍ',
+    'صَلِّ عَلَى النَّبِيِّ',
+    'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ، كَمَا صَلَّيْتَ عَلَى إِبْرَاهِيمَ، وَبَارِكْ عَلَى مُحَمَّدٍ، وَعَلَى آلِ مُحَمَّدٍ، كَمَا بَارَكْتَ عَلَى إِبْرَاهِيمَ وَآلِ إِبْرَاهِيمَ',
+    'صَلِّ عَلَى رَسُولِ اللهِ',
+    'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى أَزْوَاجِهِ وَذُرِّيَّتِهِ',
+    'اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ',
+    'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ',
+    'الصَّلَاةُ وَالسَّلَامُ عَلَيْكَ يَا رَسُولَ اللهِ',
+    'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ',
+    'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ النَّبِيِّ الْأُمِّيِّ وَعَلَى آلِهِ وَصَحْبِهِ وَسَلِّمْ',
   ];
 
   Set<int> _selectedIndices = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
@@ -208,9 +206,13 @@ class _HamsMainScreenState extends State<HamsMainScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadData();
-    _refreshPermissions();
-    _requestInitialNotif();
+    _initApp();
+  }
+
+  Future<void> _initApp() async {
+    await _loadData();
+    await _saveData();
+    await _requestInitialNotif();
   }
 
   @override
@@ -244,38 +246,39 @@ class _HamsMainScreenState extends State<HamsMainScreen>
   Future<void> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
-    final csv = prefs.getString('selectedCsv_v8') ?? '0,1,2,3,4,5,6,7,8,9,10,11';
+    final csv = prefs.getString('selectedCsv_v9') ?? '0,1,2,3,4,5,6,7,8,9,10,11';
     final parsedSet = csv
         .split(',')
         .map((e) => int.tryParse(e.trim()) ?? -1)
         .where((i) => i >= 0 && i < _adhkarList.length)
         .toSet();
 
+    if (!mounted) return;
     setState(() {
-      _isEnabled = prefs.getBool('enabled_v8') ?? true;
-      _unlockRemind = prefs.getBool('unlockRemind_v8') ?? true;
-      _notificationsEnabled = prefs.getBool('notificationsEnabled_v8') ?? true;
-      _randomMode = prefs.getBool('randomMode_v8') ?? true;
-      _fridayDouble = prefs.getBool('fridayDouble_v8') ?? true;
-      _quietHours = prefs.getBool('quietHours_v8') ?? false;
-      _intervalMinutes = prefs.getInt('interval_v8') ?? 15;
-      _dailyGoal = prefs.getInt('dailyGoal_v8') ?? 100;
-      _volumePct = prefs.getInt('volumePct_v8') ?? 80;
-      _quietStart = prefs.getInt('quietStart_v8') ?? 23;
-      _quietEnd = prefs.getInt('quietEnd_v8') ?? 6;
+      _isEnabled = prefs.getBool('enabled_v9') ?? true;
+      _unlockRemind = prefs.getBool('unlockRemind_v9') ?? true;
+      _notificationsEnabled = prefs.getBool('notificationsEnabled_v9') ?? true;
+      _randomMode = prefs.getBool('randomMode_v9') ?? true;
+      _fridayDouble = prefs.getBool('fridayDouble_v9') ?? true;
+      _quietHours = prefs.getBool('quietHours_v9') ?? false;
+      _intervalMinutes = prefs.getInt('interval_v9') ?? 15;
+      _dailyGoal = prefs.getInt('dailyGoal_v9') ?? 100;
+      _volumePct = prefs.getInt('volumePct_v9') ?? 80;
+      _quietStart = prefs.getInt('quietStart_v9') ?? 23;
+      _quietEnd = prefs.getInt('quietEnd_v9') ?? 6;
 
-      _todayCount = prefs.getInt('todayCount_v8') ?? 0;
-      _tasbihCount = prefs.getInt('tasbihCount_v8') ?? 0;
-      _totalCount = prefs.getInt('totalCount_v8') ?? 0;
+      _todayCount = prefs.getInt('todayCount_v9') ?? 0;
+      _tasbihCount = prefs.getInt('tasbihCount_v9') ?? 0;
+      _totalCount = prefs.getInt('totalCount_v9') ?? 0;
 
       _selectedIndices = parsedSet.isEmpty ? {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11} : parsedSet;
       _weeklyCounts = {
-        'السبت': prefs.getInt('wk_sat_v8') ?? 0,
-        'الأحد': prefs.getInt('wk_sun_v8') ?? 0,
-        'الإثنين': prefs.getInt('wk_mon_v8') ?? 0,
-        'الثلاثاء': prefs.getInt('wk_tue_v8') ?? 0,
-        'الأربعاء': prefs.getInt('wk_wed_v8') ?? 0,
-        'الخميس': prefs.getInt('wk_thu_v8') ?? 0,
+        'السبت': prefs.getInt('wk_sat_v9') ?? 0,
+        'الأحد': prefs.getInt('wk_sun_v9') ?? 0,
+        'الإثنين': prefs.getInt('wk_mon_v9') ?? 0,
+        'الثلاثاء': prefs.getInt('wk_tue_v9') ?? 0,
+        'الأربعاء': prefs.getInt('wk_wed_v9') ?? 0,
+        'الخميس': prefs.getInt('wk_thu_v9') ?? 0,
         'اليوم': _todayCount,
       };
     });
@@ -283,21 +286,21 @@ class _HamsMainScreenState extends State<HamsMainScreen>
 
   Future<void> _saveData() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('enabled_v8', _isEnabled);
-    await prefs.setBool('unlockRemind_v8', _unlockRemind);
-    await prefs.setBool('notificationsEnabled_v8', _notificationsEnabled);
-    await prefs.setBool('randomMode_v8', _randomMode);
-    await prefs.setBool('fridayDouble_v8', _fridayDouble);
-    await prefs.setBool('quietHours_v8', _quietHours);
-    await prefs.setInt('interval_v8', _intervalMinutes);
-    await prefs.setInt('dailyGoal_v8', _dailyGoal);
-    await prefs.setInt('volumePct_v8', _volumePct);
-    await prefs.setInt('quietStart_v8', _quietStart);
-    await prefs.setInt('quietEnd_v8', _quietEnd);
-    await prefs.setInt('todayCount_v8', _todayCount);
-    await prefs.setInt('tasbihCount_v8', _tasbihCount);
-    await prefs.setInt('totalCount_v8', _totalCount);
-    await prefs.setString('selectedCsv_v8', _selectedIndices.join(','));
+    await prefs.setBool('enabled_v9', _isEnabled);
+    await prefs.setBool('unlockRemind_v9', _unlockRemind);
+    await prefs.setBool('notificationsEnabled_v9', _notificationsEnabled);
+    await prefs.setBool('randomMode_v9', _randomMode);
+    await prefs.setBool('fridayDouble_v9', _fridayDouble);
+    await prefs.setBool('quietHours_v9', _quietHours);
+    await prefs.setInt('interval_v9', _intervalMinutes);
+    await prefs.setInt('dailyGoal_v9', _dailyGoal);
+    await prefs.setInt('volumePct_v9', _volumePct);
+    await prefs.setInt('quietStart_v9', _quietStart);
+    await prefs.setInt('quietEnd_v9', _quietEnd);
+    await prefs.setInt('todayCount_v9', _todayCount);
+    await prefs.setInt('tasbihCount_v9', _tasbihCount);
+    await prefs.setInt('totalCount_v9', _totalCount);
+    await prefs.setString('selectedCsv_v9', _selectedIndices.join(','));
 
     try {
       await _nativeChannel.invokeMethod('startOrUpdateService', {'enabled': _isEnabled});
@@ -305,16 +308,8 @@ class _HamsMainScreenState extends State<HamsMainScreen>
   }
 
   Future<void> _playRealMp3Dhikr(int index) async {
-    final item = _adhkarList[index];
+    final text = _adhkarList[index];
     HapticFeedback.mediumImpact();
-
-    try {
-      await _audioPlayer.stop();
-      await _audioPlayer.setVolume((_volumePct / 100.0).clamp(0.05, 1.0));
-      await _audioPlayer.play(AssetSource(item['file']!));
-    } catch (_) {
-      SystemSound.play(SystemSoundType.alert);
-    }
 
     setState(() {
       _todayCount++;
@@ -323,14 +318,13 @@ class _HamsMainScreenState extends State<HamsMainScreen>
     });
     await _saveData();
 
-    if (_notificationsEnabled) {
-      try {
-        await _nativeChannel.invokeMethod('showNotification', {
-          'title': 'هَمْس | Hams 🕌',
-          'body': '« ${item['display']!} »',
-        });
-      } catch (_) {}
-    }
+    try {
+      await _nativeChannel.invokeMethod('playDhikrNow', {
+        'index': index,
+        'volumePct': _volumePct,
+        'showNotif': _notificationsEnabled,
+      });
+    } catch (_) {}
 
     if (mounted) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -338,7 +332,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
         SnackBar(
           backgroundColor: const Color(0xFF065F46),
           content: Text(
-            '🔊 « ${item['display']} »',
+            '🔊 « $text »',
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
           ),
           duration: const Duration(seconds: 2),
@@ -358,7 +352,6 @@ class _HamsMainScreenState extends State<HamsMainScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -590,7 +583,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 children: [
                   const Expanded(
                     child: Text(
-                      '🎙️ صيغ الصلاة والأذكار',
+                      '🎙️ صيغ الصلاة والأذكار الصوتية',
                       style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF064E3B)),
                     ),
                   ),
@@ -648,7 +641,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                         child: InkWell(
                           onTap: () => _playRealMp3Dhikr(i),
                           child: Text(
-                            '${isSelected ? "✓ " : ""}« ${_adhkarList[i]['display']!} »',
+                            '${isSelected ? "✓ " : ""}« ${_adhkarList[i]} »',
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF064E3B), height: 1.4),
                           ),
                         ),
@@ -744,6 +737,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                   ),
                 ),
               ),
+              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -764,7 +758,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE5E7EB))),
                 child: Column(
                   children: [
-                    const Text('حصاد اليوم', style: TextStyle(color: Colors.grey, fontSize: 12.5)),
+                    const Text('حصاد اليوم', style: TextStyle(color: Colors.grey, fontSize: 12.5, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 6),
                     Text('$_todayCount', style: const TextStyle(color: Color(0xFF065F46), fontSize: 30, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 4),
@@ -780,11 +774,11 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE5E7EB))),
                 child: Column(
                   children: [
-                    const Text('الحصاد الكلي', style: TextStyle(color: Colors.grey, fontSize: 12.5)),
+                    const Text('الحصاد منذ تثبيت التطبيق', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 11.5, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 6),
                     Text('$_totalCount', style: const TextStyle(color: Color(0xFFB45309), fontSize: 30, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 4),
-                    const Text('منذ تثبيت التطبيق', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                    const Text('إجمالي الحصاد الكلي', style: TextStyle(color: Colors.grey, fontSize: 11)),
                   ],
                 ),
               ),
@@ -941,7 +935,6 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 activeColor: const Color(0xFF065F46),
                 onChanged: (val) {
                   setState(() => _volumePct = val.round());
-                  _audioPlayer.setVolume((_volumePct / 100.0).clamp(0.05, 1.0));
                   _saveData();
                 },
               ),
