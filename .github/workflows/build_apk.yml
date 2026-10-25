@@ -51,29 +51,6 @@ jobs:
         run: |
           import os, glob, shutil, struct, zlib, math
 
-          pubspec = """name: hams
-          description: "Hams App"
-          publish_to: 'none'
-          version: 1.0.0+1
-          environment:
-            sdk: '>=3.0.0 <4.0.0'
-          dependencies:
-            flutter:
-              sdk: flutter
-            shared_preferences: ^2.2.3
-            audioplayers: ^6.0.0
-          dev_dependencies:
-            flutter_test:
-              sdk: flutter
-          flutter:
-            uses-material-design: true
-            assets:
-              - assets/audio/
-          """
-          with open("pubspec.yaml", "w", encoding="utf-8") as f:
-              f.write("\n".join(line.lstrip() if not line.startswith("  ") else line[10:] for line in pubspec.splitlines()))
-
-          # Write clean pubspec directly
           with open("pubspec.yaml", "w", encoding="utf-8") as f:
               f.write("name: hams\ndescription: Hams\npublish_to: 'none'\nversion: 1.0.0+1\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\ndependencies:\n  flutter:\n    sdk: flutter\n  shared_preferences: ^2.2.3\n  audioplayers: ^6.0.0\nflutter:\n  uses-material-design: true\n  assets:\n    - assets/audio/\n")
 
@@ -160,7 +137,7 @@ jobs:
               '    private val periodicRunnable = object : Runnable {',
               '        override fun run() {',
               '            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)',
-              '            if (prefs.getBoolean("flutter.enabled_v7", true)) triggerSalawat("تذكير دوري ⏱️")',
+              '            if (prefs.getBoolean("flutter.enabled_v8", true)) triggerSalawat("تذكير دوري ⏱️")',
               '            scheduleNextTick()',
               '        }',
               '    }',
@@ -178,10 +155,10 @@ jobs:
               '    private fun scheduleNextTick() {',
               '        handler.removeCallbacks(periodicRunnable)',
               '        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)',
-              '        if (!prefs.getBoolean("flutter.enabled_v7", true)) return',
-              '        val baseMins = prefs.getLong("flutter.interval_v7", 15L).toInt().coerceAtLeast(2)',
+              '        if (!prefs.getBoolean("flutter.enabled_v8", true)) return',
+              '        val baseMins = prefs.getLong("flutter.interval_v8", 15L).toInt().coerceAtLeast(2)',
               '        val isFri = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) == Calendar.FRIDAY',
-              '        val mins = if (prefs.getBoolean("flutter.fridayDouble_v7", true) && isFri) (baseMins / 2).coerceAtLeast(2) else baseMins',
+              '        val mins = if (prefs.getBoolean("flutter.fridayDouble_v8", true) && isFri) (baseMins / 2).coerceAtLeast(2) else baseMins',
               '        handler.postDelayed(periodicRunnable, mins * 60 * 1000L)',
               '    }',
               '    private fun registerUnlock() {',
@@ -193,7 +170,7 @@ jobs:
               '                    val now = System.currentTimeMillis()',
               '                    if (now - lastUnlockPlayTime < 8000L) return',
               '                    val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)',
-              '                    if (prefs.getBoolean("flutter.enabled_v7", true) && prefs.getBoolean("flutter.unlockRemind_v7", true)) {',
+              '                    if (prefs.getBoolean("flutter.enabled_v8", true) && prefs.getBoolean("flutter.unlockRemind_v8", true)) {',
               '                        lastUnlockPlayTime = now',
               '                        triggerSalawat("عند فتح قفل الشاشة 🔓")',
               '                    }',
@@ -205,23 +182,19 @@ jobs:
               '    }',
               '    private fun triggerSalawat(src: String) {',
               '        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)',
-              '        if (prefs.getBoolean("flutter.quietHours_v7", false)) {',
+              '        if (prefs.getBoolean("flutter.quietHours_v8", false)) {',
               '            val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)',
               '            if (h >= 23 || h < 6) return',
               '        }',
-              '        val csv = prefs.getString("flutter.selectedCsv_v7", "0,1,2,3,4,5,6,7,8,9,10,11") ?: "0,1,2,3,4,5,6,7,8,9,10,11"',
+              '        val csv = prefs.getString("flutter.selectedCsv_v8", "0,1,2,3,4,5,6,7,8,9,10,11") ?: "0,1,2,3,4,5,6,7,8,9,10,11"',
               '        val list = csv.split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it in 0..11 }',
               '        val pool = if (list.isEmpty()) (0..11).toList() else list',
-              '        val idx = if (prefs.getBoolean("flutter.randomMode_v7", true)) pool[random.nextInt(pool.size)] else pool.first()',
-              '        val vol = (prefs.getLong("flutter.volumePct_v7", 80L).toFloat().coerceIn(10f, 100f)) / 100f',
+              '        val idx = if (prefs.getBoolean("flutter.randomMode_v8", true)) pool[random.nextInt(pool.size)] else pool.first()',
+              '        val vol = (prefs.getLong("flutter.volumePct_v8", 80L).toFloat().coerceIn(10f, 100f)) / 100f',
               '        playMp3("audio/voice" + (idx + 1) + ".mp3", vol)',
-              '        val today = prefs.getLong("flutter.todayCount_v7", 0L) + 1L',
-              '        val total = prefs.getLong("flutter.totalCount_v7", 0L) + 1L',
-              '        val tStr = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())',
-              '        val item = "همسة: " + formulas[idx] + "|" + src + " — الصوت: " + (vol*100).toInt() + "%|" + tStr',
-              '        val old = prefs.getString("flutter.logsCsv_v7", "") ?: ""',
-              '        val comb = if (old.isEmpty()) item else (item + ";;" + old)',
-              '        prefs.edit().putLong("flutter.todayCount_v7", today).putLong("flutter.totalCount_v7", total).putString("flutter.logsCsv_v7", comb.split(";;").take(25).joinToString(";;")).apply()',
+              '        val today = prefs.getLong("flutter.todayCount_v8", 0L) + 1L',
+              '        val total = prefs.getLong("flutter.totalCount_v8", 0L) + 1L',
+              '        prefs.edit().putLong("flutter.todayCount_v8", today).putLong("flutter.totalCount_v8", total).apply()',
               '    }',
               '    private fun playMp3(path: String, vol: Float) {',
               '        try {',
@@ -315,7 +288,7 @@ jobs:
               '}'
           ]
           open(main_kt_path, "w", encoding="utf-8").write("\n".join(main_lines))
-          print("Native Android files configured successfully!")
+          print("Native Android files successfully structured!")
 
       - name: 7. Compile Release APK
         run: |
