@@ -8,27 +8,27 @@ jobs:
   build_apk:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout Repository Files
+      - name: 1. Checkout Repository Files
         uses: actions/checkout@v4
 
-      - name: Backup Uploaded 12 MP3 Files
+      - name: 2. Backup Uploaded 12 MP3 Files
         run: |
           mkdir -p /tmp/hams_mp3
           find . -maxdepth 3 -iname "*.mp3" -exec cp {} /tmp/hams_mp3/ \; || true
           ls -la /tmp/hams_mp3/
 
-      - name: Setup Java 17
+      - name: 3. Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Flutter
+      - name: 4. Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      - name: Generate Project Structure and Audio Files
+      - name: 5. Initialize Flutter Project & Audio Assets
         run: |
           rm -rf android ios lib test pubspec.yaml pubspec.lock .metadata
           flutter create --org com.hams.salawat --project-name hams .
@@ -46,110 +46,54 @@ jobs:
           flutter pub add shared_preferences audioplayers
           printf "\n  assets:\n    - assets/audio/\n" >> pubspec.yaml
 
-      - name: Generate App Icon
+      - name: 6. Generate All App Files via Python Builder
+        shell: python3 {0}
         run: |
-          cat << 'DARTEOF' > generate_icon.dart
-          import 'dart:io';
-          import 'dart:typed_data';
-          import 'dart:math';
+          import os, glob, struct, zlib, math
 
-          int _crc32(List<int> data) {
-            int crc = 0xFFFFFFFF;
-            for (final b in data) {
-              crc ^= b;
-              for (int i = 0; i < 8; i++) {
-                crc = (crc & 1) != 0 ? (crc >>> 1) ^ 0xEDB88320 : (crc >>> 1);
-              }
-            }
-            return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF;
-          }
+          # --- أ. توليد أيقونة تطبيق هَمْس واستبدال أيقونة Flutter ---
+          def create_hams_icon(filename, size):
+              raw_data = bytearray()
+              cx, cy = size / 2.0, size / 2.0
+              r_outer, r_inner = size * 0.34, size * 0.28
+              cut_x, cut_y = cx - size * 0.10, cy - size * 0.06
+              for y in range(size):
+                  raw_data.append(0)
+                  for x in range(size):
+                      dx, dy = x - cx, y - cy
+                      dist_center = math.sqrt(dx*dx + dy*dy)
+                      r, g, b, a = (4, 78, 56, 255) if dist_center > size * 0.45 else (6, 95, 70, 255)
+                      d1 = math.sqrt((x - cx)**2 + (y - cy)**2)
+                      d2 = math.sqrt((x - cut_x)**2 + (y - cut_y)**2)
+                      if d1 < r_outer and d2 > r_inner:
+                          r, g, b, a = 245, 158, 11, 255
+                      ds = math.sqrt((x - (cx - size*0.14))**2 + (y - (cy - size*0.12))**2)
+                      if ds < size * 0.045:
+                          r, g, b, a = 251, 191, 36, 255
+                      raw_data.extend([r, g, b, a])
 
-          List<int> _chunk(String type, List<int> data) {
-            final out = BytesBuilder();
-            final len = ByteData(4)..setUint32(0, data.length, Endian.big);
-            out.add(len.buffer.asUint8List());
-            final tBytes = type.codeUnits;
-            out.add(tBytes);
-            out.add(data);
-            final crcVal = _crc32([...tBytes, ...data]);
-            final crcBytes = ByteData(4)..setUint32(0, crcVal, Endian.big);
-            out.add(crcBytes.buffer.asUint8List());
-            return out.toBytes();
-          }
+              def png_chunk(chunk_type, data):
+                  return (struct.pack(">I", len(data)) + chunk_type + data +
+                          struct.pack(">I", zlib.crc32(chunk_type + data) & 0xffffffff))
 
-          void createIcon(String path, int size) {
-            final raw = BytesBuilder();
-            final cx = size / 2.0;
-            final cy = size / 2.0;
-            final rOuter = size * 0.34;
-            final rInner = size * 0.28;
-            final cutX = cx - size * 0.10;
-            final cutY = cy - size * 0.06;
+              ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
+              idat = zlib.compress(bytes(raw_data), 9)
+              png_bytes = b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", ihdr) + png_chunk(b"IDAT", idat) + png_chunk(b"IEND", b"")
+              os.makedirs(os.path.dirname(filename), exist_ok=True)
+              with open(filename, "wb") as f:
+                  f.write(png_bytes)
 
-            for (int y = 0; y < size; y++) {
-              raw.addByte(0);
-              for (int x = 0; x < size; x++) {
-                final dx = x - cx;
-                final dy = y - cy;
-                final distCenter = sqrt(dx * dx + dy * dy);
-                int r = 6, g = 95, b = 70, a = 255;
-                if (distCenter > size * 0.45) {
-                  r = 4; g = 78; b = 56;
-                }
-                final d1 = sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
-                final d2 = sqrt((x - cutX) * (x - cutX) + (y - cutY) * (y - cutY));
-                if (d1 < rOuter && d2 > rInner) {
-                  r = 245; g = 158; b = 11;
-                }
-                final ds = sqrt(pow(x - (cx - size * 0.14), 2) + pow(y - (cy - size * 0.12), 2));
-                if (ds < size * 0.045) {
-                  r = 251; g = 191; b = 36;
-                }
-                raw.add([r, g, b, a]);
-              }
-            }
+          res_base = "android/app/src/main/res"
+          for folder, sz in [("mipmap-mdpi", 48), ("mipmap-hdpi", 72), ("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144), ("mipmap-xxxhdpi", 192)]:
+              create_hams_icon(f"{res_base}/{folder}/ic_launcher.png", sz)
 
-            final ihdr = ByteData(13)
-              ..setUint32(0, size, Endian.big)
-              ..setUint32(4, size, Endian.big)
-              ..setUint8(8, 8)
-              ..setUint8(9, 6)
-              ..setUint8(10, 0)
-              ..setUint8(11, 0)
-              ..setUint8(12, 0);
+          anydpi = f"{res_base}/mipmap-anydpi-v26"
+          if os.path.exists(anydpi):
+              import shutil
+              shutil.rmtree(anydpi)
 
-            final compressed = zlib.encode(raw.toBytes());
-            final png = BytesBuilder();
-            png.add([137, 80, 78, 71, 13, 10, 26, 10]);
-            png.add(_chunk('IHDR', ihdr.buffer.asUint8List()));
-            png.add(_chunk('IDAT', compressed));
-            png.add(_chunk('IEND', []));
-
-            File(path).parent.createSync(recursive: true);
-            File(path).writeAsBytesSync(png.toBytes());
-          }
-
-          void main() {
-            final targets = {
-              'mipmap-mdpi': 48,
-              'mipmap-hdpi': 72,
-              'mipmap-xhdpi': 96,
-              'mipmap-xxhdpi': 144,
-              'mipmap-xxxhdpi': 192,
-            };
-            targets.forEach((folder, sz) {
-              createIcon('android/app/src/main/res/$folder/ic_launcher.png', sz);
-            });
-          }
-          DARTEOF
-          dart run generate_icon.dart
-          rm -f generate_icon.dart
-          rm -rf android/app/src/main/res/mipmap-anydpi-v26
-
-      - name: Configure Android Manifest and Native Background Service
-        run: |
-          cat << 'EOF' > android/app/src/main/AndroidManifest.xml
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          # --- ب. كتابة ملف AndroidManifest.xml ---
+          manifest_xml = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
               <uses-permission android:name="android.permission.VIBRATE" />
               <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -190,15 +134,18 @@ jobs:
                       android:name="flutterEmbedding"
                       android:value="2" />
               </application>
-          </manifest>
-          EOF
+          </manifest>'''
+          with open("android/app/src/main/AndroidManifest.xml", "w", encoding="utf-8") as f:
+              f.write(manifest_xml)
 
-          MAIN_KT=$(find android/app/src/main/kotlin -name "MainActivity.kt" | head -n 1)
-          KT_DIR=$(dirname "$MAIN_KT")
-          PKG_LINE=$(head -n 1 "$MAIN_KT")
+          # --- ج. كتابة خدمة الخلفية ومستشعر فتح القفل بـ Kotlin ---
+          main_kt_files = glob.glob("android/app/src/main/kotlin/**/MainActivity.kt", recursive=True)
+          main_kt_path = main_kt_files[0]
+          kt_dir = os.path.dirname(main_kt_path)
+          with open(main_kt_path, "r", encoding="utf-8") as f:
+              pkg_line = f.readline().strip()
 
-          cat << EOF > "$KT_DIR/HamsForegroundService.kt"
-          $PKG_LINE
+          service_kt = pkg_line + '''
 
           import android.app.Notification
           import android.app.NotificationChannel
@@ -344,14 +291,14 @@ jobs:
                   val volPct = prefs.getLong("flutter.volumePct_v7", 80L).toFloat().coerceIn(10f, 100f)
                   val volume = volPct / 100f
 
-                  playAssetMp3("audio/voice\${chosenIdx + 1}.mp3", volume)
+                  playAssetMp3("audio/voice" + (chosenIdx + 1) + ".mp3", volume)
 
                   val today = prefs.getLong("flutter.todayCount_v7", 0L) + 1L
                   val total = prefs.getLong("flutter.totalCount_v7", 0L) + 1L
                   val timeStr = SimpleDateFormat("hh:mm a", Locale("ar")).format(Date())
-                  val newLogItem = "همسة: \${formulas[chosenIdx]}|\$sourceLabel — الصوت: \${volPct.toInt()}%|\$timeStr"
+                  val newLogItem = "همسة: " + formulas[chosenIdx] + "|" + sourceLabel + " — الصوت: " + volPct.toInt() + "%|" + timeStr
                   val oldLogs = prefs.getString("flutter.logsCsv_v7", "") ?: ""
-                  val combinedLogs = if (oldLogs.isEmpty()) newLogItem else "\$newLogItem;;\$oldLogs"
+                  val combinedLogs = if (oldLogs.isEmpty()) newLogItem else (newLogItem + ";;" + oldLogs)
                   val trimmedLogs = combinedLogs.split(";;").take(25).joinToString(";;")
 
                   prefs.edit()
@@ -362,7 +309,7 @@ jobs:
 
                   val notifEnabled = prefs.getBoolean("flutter.notificationsEnabled_v7", true)
                   if (notifEnabled) {
-                      showSalawatNotification("هَمْس | Hams 🕌", "« \${formulas[chosenIdx]} »")
+                      showSalawatNotification("هَمْس | Hams 🕌", "« " + formulas[chosenIdx] + " »")
                   }
               }
 
@@ -453,10 +400,11 @@ jobs:
 
               override fun onBind(intent: Intent?): IBinder? = null
           }
-          EOF
+          '''
+          with open(os.path.join(kt_dir, "HamsForegroundService.kt"), "w", encoding="utf-8") as f:
+              f.write(service_kt)
 
-          cat << EOF > "$MAIN_KT"
-          $PKG_LINE
+          main_activity_kt = pkg_line + '''
 
           import android.app.NotificationChannel
           import android.app.NotificationManager
@@ -518,7 +466,7 @@ jobs:
                           "requestBatteryExemption" -> {
                               try {
                                   val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                                  intent.data = Uri.parse("package:\$packageName")
+                                  intent.data = Uri.parse("package:" + packageName)
                                   startActivity(intent)
                               } catch (e: Exception) {
                                   openAppDetails()
@@ -528,7 +476,7 @@ jobs:
                           "requestOverlayPermission" -> {
                               try {
                                   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                      val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:\$packageName"))
+                                      val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName))
                                       startActivity(intent)
                                   }
                               } catch (e: Exception) {
@@ -566,7 +514,7 @@ jobs:
 
               private fun openAppDetails() {
                   val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                  intent.data = Uri.parse("package:\$packageName")
+                  intent.data = Uri.parse("package:" + packageName)
                   startActivity(intent)
               }
 
@@ -586,12 +534,12 @@ jobs:
                   manager.notify((System.currentTimeMillis() % 10000).toInt(), builder.build())
               }
           }
-          EOF
+          '''
+          with open(main_kt_path, "w", encoding="utf-8") as f:
+              f.write(main_activity_kt)
 
-      - name: Write Flutter UI Code (lib/main.dart)
-        run: |
-          cat << 'FLUTTEREOF' > lib/main.dart
-          import 'dart:async';
+          # --- د. كتابة كود واجهات Flutter الكامل في lib/main.dart ---
+          dart_code = r'''import 'dart:async';
           import 'dart:math';
           import 'package:flutter/material.dart';
           import 'package:flutter/services.dart';
@@ -1131,4 +1079,20 @@ jobs:
                 ),
                 body: pages[_currentIndex],
                 bottomNavigationBar: NavigationBar(
-                  backg
+                  backgroundColor: Colors.white,
+                  indicatorColor: const Color(0xFFECFDF5),
+                  selectedIndex: _currentIndex,
+                  onDestinationSelected: (idx) => setState(() => _currentIndex = idx),
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(Icons.notifications_active_outlined),
+                      selectedIcon: Icon(Icons.notifications_active, color: Color(0xFF065F46)),
+                      label: 'الرئيسية',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.radio_button_checked),
+                      selectedIcon: Icon(Icons.touch_app, color: Color(0xFF065F46)),
+                      label: 'المسبحة',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.bar_chart_
