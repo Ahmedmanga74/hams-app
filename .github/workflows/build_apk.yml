@@ -28,7 +28,7 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: 5. Initialize Flutter Project & Audio Assets
+      - name: 5. Create Clean Flutter Project & Copy MP3s
         run: |
           rm -rf android ios lib test pubspec.yaml pubspec.lock .metadata
           flutter create --org com.hams.salawat --project-name hams .
@@ -43,15 +43,42 @@ jobs:
               cp "$FIRST_MP3" "assets/audio/voice${i}.mp3"
             fi
           done
-          flutter pub add shared_preferences audioplayers
-          printf "\n  assets:\n    - assets/audio/\n" >> pubspec.yaml
+          ls -la assets/audio/
 
-      - name: 6. Generate All App Files via Python Builder
+      - name: 6. Generate All Project Files Safely
         shell: python3 {0}
         run: |
-          import os, glob, struct, zlib, math
+          import os, glob, shutil, struct, zlib, math, textwrap
 
-          # --- أ. توليد أيقونة تطبيق هَمْس واستبدال أيقونة Flutter ---
+          # 1. كتابة pubspec.yaml نظيف وسليم 100% بدون أخطاء YAML
+          pubspec_content = textwrap.dedent("""\
+          name: hams
+          description: "هَمْس | Hams - رفيقك للتذكير بالصلاة على النبي ﷺ"
+          publish_to: 'none'
+          version: 1.0.0+1
+
+          environment:
+            sdk: '>=3.0.0 <4.0.0'
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            shared_preferences: ^2.2.3
+            audioplayers: ^6.0.0
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+
+          flutter:
+            uses-material-design: true
+            assets:
+              - assets/audio/
+          """)
+          with open("pubspec.yaml", "w", encoding="utf-8") as f:
+              f.write(pubspec_content)
+
+          # 2. توليد أيقونة تطبيق هَمْس واستبدال أيقونة Flutter
           def create_hams_icon(filename, size):
               raw_data = bytearray()
               cx, cy = size / 2.0, size / 2.0
@@ -86,14 +113,15 @@ jobs:
           res_base = "android/app/src/main/res"
           for folder, sz in [("mipmap-mdpi", 48), ("mipmap-hdpi", 72), ("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144), ("mipmap-xxxhdpi", 192)]:
               create_hams_icon(f"{res_base}/{folder}/ic_launcher.png", sz)
+              create_hams_icon(f"{res_base}/{folder}/ic_launcher_round.png", sz)
 
           anydpi = f"{res_base}/mipmap-anydpi-v26"
           if os.path.exists(anydpi):
-              import shutil
               shutil.rmtree(anydpi)
 
-          # --- ب. كتابة ملف AndroidManifest.xml ---
-          manifest_xml = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          # 3. كتابة ملف AndroidManifest.xml
+          manifest_xml = textwrap.dedent("""\
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
               <uses-permission android:name="android.permission.VIBRATE" />
               <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -134,19 +162,19 @@ jobs:
                       android:name="flutterEmbedding"
                       android:value="2" />
               </application>
-          </manifest>'''
+          </manifest>
+          """)
           with open("android/app/src/main/AndroidManifest.xml", "w", encoding="utf-8") as f:
               f.write(manifest_xml)
 
-          # --- ج. كتابة خدمة الخلفية ومستشعر فتح القفل بـ Kotlin ---
+          # 4. كتابة كود خدمة الخلفية ومستشعر فتح قفل الشاشة بـ Kotlin
           main_kt_files = glob.glob("android/app/src/main/kotlin/**/MainActivity.kt", recursive=True)
           main_kt_path = main_kt_files[0]
           kt_dir = os.path.dirname(main_kt_path)
           with open(main_kt_path, "r", encoding="utf-8") as f:
               pkg_line = f.readline().strip()
 
-          service_kt = pkg_line + '''
-
+          service_kt = pkg_line + "\n\n" + textwrap.dedent("""\
           import android.app.Notification
           import android.app.NotificationChannel
           import android.app.NotificationManager
@@ -400,12 +428,11 @@ jobs:
 
               override fun onBind(intent: Intent?): IBinder? = null
           }
-          '''
+          """)
           with open(os.path.join(kt_dir, "HamsForegroundService.kt"), "w", encoding="utf-8") as f:
               f.write(service_kt)
 
-          main_activity_kt = pkg_line + '''
-
+          main_activity_kt = pkg_line + "\n\n" + textwrap.dedent("""\
           import android.app.NotificationChannel
           import android.app.NotificationManager
           import android.content.Context
@@ -534,12 +561,13 @@ jobs:
                   manager.notify((System.currentTimeMillis() % 10000).toInt(), builder.build())
               }
           }
-          '''
+          """)
           with open(main_kt_path, "w", encoding="utf-8") as f:
               f.write(main_activity_kt)
 
-          # --- د. كتابة كود واجهات Flutter الكامل في lib/main.dart ---
-          dart_code = r'''import 'dart:async';
+          # 5. كتابة كود واجهات Flutter الكامل في lib/main.dart
+          dart_code = textwrap.dedent(r"""\
+          import 'dart:async';
           import 'dart:math';
           import 'package:flutter/material.dart';
           import 'package:flutter/services.dart';
@@ -1080,19 +1108,4 @@ jobs:
                 body: pages[_currentIndex],
                 bottomNavigationBar: NavigationBar(
                   backgroundColor: Colors.white,
-                  indicatorColor: const Color(0xFFECFDF5),
-                  selectedIndex: _currentIndex,
-                  onDestinationSelected: (idx) => setState(() => _currentIndex = idx),
-                  destinations: const [
-                    NavigationDestination(
-                      icon: Icon(Icons.notifications_active_outlined),
-                      selectedIcon: Icon(Icons.notifications_active, color: Color(0xFF065F46)),
-                      label: 'الرئيسية',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.radio_button_checked),
-                      selectedIcon: Icon(Icons.touch_app, color: Color(0xFF065F46)),
-                      label: 'المسبحة',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.bar_chart_
+           
