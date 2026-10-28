@@ -269,7 +269,6 @@ class _HamsMainScreenState extends State<HamsMainScreen>
     int total = prefs.getInt('totalCount_v10') ?? 0;
     int today = prefs.getInt('todayCount_v10') ?? 0;
 
-    // إذا تغير اليوم في الهاتف إلى يوم جديد، نصفر حصاد اليوم ونرحّله
     if (savedDayKey != todayKey) {
       prefs.setInt('day_$savedDayKey', today);
       today = 0;
@@ -279,7 +278,6 @@ class _HamsMainScreenState extends State<HamsMainScreen>
       today = prefs.getInt('day_$todayKey') ?? today;
     }
 
-    // جلب آخر 7 أيام فعلية
     List<Map<String, dynamic>> stats = [];
     final now = DateTime.now();
     for (int i = 0; i < 7; i++) {
@@ -355,7 +353,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
       _totalCount++;
     });
     await _saveData();
-    await _loadData(); // تحديث الجدول فوراً
+    await _loadData();
 
     try {
       await _nativeChannel.invokeMethod('playDhikrNow', {
@@ -664,7 +662,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                     children: [
                       Checkbox(
                         value: isSelected,
-                        activeColor: const Color(0xFF064E3B),
+                        activeColor: const Color(0xFF065F46),
                         onChanged: (val) {
                           setState(() {
                             if (val == true) {
@@ -1111,8 +1109,6 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 '• العرض فوق التطبيقات الأخرى (SYSTEM_ALERT_WINDOW): لتمكين ظهور التنبيه التذكيري أثناء استخدام الهاتف.',
                 style: TextStyle(fontSize: 12.5, height: 1.6),
               ),
-              SizedBox(height: 14),
-              Text('4. العمل بدون إنترنت (100% Offline):', style: TextStyle(fontWeight: FontWeight.rawValue(0) == 0 ? const TextStyle().fontWeight : null, fontSize: 14, color: Color(0xFF064E3B))), // Safe fallback
               SizedBox(height: 14),
               Text('4. العمل بدون إنترنت (100% Offline):', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),
               SizedBox(height: 4),
