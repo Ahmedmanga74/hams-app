@@ -54,7 +54,7 @@ jobs:
                       src = mp3_files[(i - 1) % len(mp3_files)]
                       shutil.copy(src, target)
 
-      - name: 6. Configure Android WakeLock Alarm & Auto-Dismiss Notification
+      - name: 6. Configure Android Native Service, Audio & Icon
         shell: python3 {0}
         run: |
           import os, glob, shutil, struct, zlib, math
@@ -132,7 +132,6 @@ jobs:
           kt_dir = os.path.dirname(main_kt_path)
           pkg_line = open(main_kt_path, "r", encoding="utf-8").readline().strip()
 
-          # 1. مستقبل منبه الخلفية الدقيق (يعمل حتى والشاشة مغلقة تماماً)
           receiver_lines = [
               pkg_line,
               'import android.content.BroadcastReceiver',
@@ -156,7 +155,6 @@ jobs:
           ]
           open(os.path.join(kt_dir, "HamsAlarmReceiver.kt"), "w", encoding="utf-8").write("\n".join(receiver_lines))
 
-          # 2. خدمة الخلفية مع WakeLock وإخفاء الإشعار تلقائياً فور انتهاء صوت الذكر
           service_lines = [
               pkg_line,
               'import android.app.*',
@@ -326,9 +324,18 @@ jobs:
               '        val vol = (prefs.getLong("flutter.volumePct_v9", 80L).toFloat().coerceIn(10f, 100f)) / 100f',
               '        val showNotif = prefs.getBoolean("flutter.notificationsEnabled_v9", true)',
               '        playVoiceAndAutoDismissNotif(this, idx, vol, showNotif)',
-              '        val today = prefs.getLong("flutter.todayCount_v9", 0L) + 1L',
-              '        val total = prefs.getLong("flutter.totalCount_v9", 0L) + 1L',
-              '        prefs.edit().putLong("flutter.todayCount_v9", today).putLong("flutter.totalCount_v9", total).apply()',
+              '        ',
+              '        val cal = Calendar.getInstance()',
+              '        val todayKey = "" + cal.get(Calendar.YEAR) + "-" + String.format("%02d", cal.get(Calendar.MONTH) + 1) + "-" + String.format("%02d", cal.get(Calendar.DAY_OF_MONTH))',
+              '        ',
+              '        val todayCount = prefs.getInt("day_" + todayKey, 0) + 1',
+              '        val totalCount = prefs.getLong("flutter.totalCount_v10", 0L) + 1L',
+              '        ',
+              '        prefs.edit()',
+              '            .setInt("day_" + todayKey, todayCount)',
+              '            .setInt("todayCount_v10", todayCount)',
+              '            .putLong("flutter.totalCount_v10", totalCount)',
+              '            .apply()',
               '    }',
               '    private fun buildForegroundNotif(txt: String): Notification {',
               '        val cid = "hams_bg_quiet"',
@@ -416,7 +423,7 @@ jobs:
               '}'
           ]
           open(main_kt_path, "w", encoding="utf-8").write("\n".join(main_lines))
-          print("Native AlarmManager & Auto-Dismiss Notification configured!")
+          print("Native AlarmManager & Date-based Stats configured!")
 
       - name: 7. Compile Release APK
         run: |
@@ -427,5 +434,5 @@ jobs:
       - name: 8. Upload Hams APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Hams-APK
+          name: `Hams-APK`
           path: build/app/outputs/flutter-apk/app-release.apk
