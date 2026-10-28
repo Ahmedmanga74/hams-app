@@ -192,15 +192,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
   ];
 
   Set<int> _selectedIndices = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  Map<String, int> _weeklyCounts = {
-    'السبت': 0,
-    'الأحد': 0,
-    'الإثنين': 0,
-    'الثلاثاء': 0,
-    'الأربعاء': 0,
-    'الخميس': 0,
-    'اليوم': 0,
-  };
+  List<Map<String, dynamic>> _last7DaysStats = [];
 
   @override
   void initState() {
@@ -243,64 +235,111 @@ class _HamsMainScreenState extends State<HamsMainScreen>
     } catch (_) {}
   }
 
+  String _getTodayKey() {
+    final now = DateTime.now();
+    return "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+  }
+
+  String _formatDayName(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(date.year, date.month, date.day);
+    
+    if (target == today) return 'اليوم';
+    if (target == today.subtract(const Duration(days: 1))) return 'أمس';
+
+    const days = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
+    return days[date.weekday - 1];
+  }
+
   Future<void> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
-    final csv = prefs.getString('selectedCsv_v9') ?? '0,1,2,3,4,5,6,7,8,9,10,11';
+    
+    final csv = prefs.getString('selectedCsv_v10') ?? '0,1,2,3,4,5,6,7,8,9,10,11';
     final parsedSet = csv
         .split(',')
         .map((e) => int.tryParse(e.trim()) ?? -1)
         .where((i) => i >= 0 && i < _adhkarList.length)
         .toSet();
 
+    final todayKey = _getTodayKey();
+    final savedDayKey = prefs.getString('last_day_key') ?? todayKey;
+
+    int total = prefs.getInt('totalCount_v10') ?? 0;
+    int today = prefs.getInt('todayCount_v10') ?? 0;
+
+    // إذا تغير اليوم في الهاتف إلى يوم جديد، نصفر حصاد اليوم ونرحّله
+    if (savedDayKey != todayKey) {
+      prefs.setInt('day_$savedDayKey', today);
+      today = 0;
+      prefs.setString('last_day_key', todayKey);
+      prefs.setInt('todayCount_v10', 0);
+    } else {
+      today = prefs.getInt('day_$todayKey') ?? today;
+    }
+
+    // جلب آخر 7 أيام فعلية
+    List<Map<String, dynamic>> stats = [];
+    final now = DateTime.now();
+    for (int i = 0; i < 7; i++) {
+      final d = now.subtract(Duration(days: i));
+      final k = "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
+      final count = i == 0 ? today : (prefs.getInt('day_$k') ?? 0);
+      
+      stats.add({
+        'key': k,
+        'label': _formatDayName(d),
+        'dateStr': '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}',
+        'count': count,
+      });
+    }
+
     if (!mounted) return;
     setState(() {
-      _isEnabled = prefs.getBool('enabled_v9') ?? true;
-      _unlockRemind = prefs.getBool('unlockRemind_v9') ?? true;
-      _notificationsEnabled = prefs.getBool('notificationsEnabled_v9') ?? true;
-      _randomMode = prefs.getBool('randomMode_v9') ?? true;
-      _fridayDouble = prefs.getBool('fridayDouble_v9') ?? true;
-      _quietHours = prefs.getBool('quietHours_v9') ?? false;
-      _intervalMinutes = prefs.getInt('interval_v9') ?? 15;
-      _dailyGoal = prefs.getInt('dailyGoal_v9') ?? 100;
-      _volumePct = prefs.getInt('volumePct_v9') ?? 80;
-      _quietStart = prefs.getInt('quietStart_v9') ?? 23;
-      _quietEnd = prefs.getInt('quietEnd_v9') ?? 6;
+      _isEnabled = prefs.getBool('enabled_v10') ?? true;
+      _unlockRemind = prefs.getBool('unlockRemind_v10') ?? true;
+      _notificationsEnabled = prefs.getBool('notificationsEnabled_v10') ?? true;
+      _randomMode = prefs.getBool('randomMode_v10') ?? true;
+      _fridayDouble = prefs.getBool('fridayDouble_v10') ?? true;
+      _quietHours = prefs.getBool('quietHours_v10') ?? false;
+      _intervalMinutes = prefs.getInt('interval_v10') ?? 15;
+      _dailyGoal = prefs.getInt('dailyGoal_v10') ?? 100;
+      _volumePct = prefs.getInt('volumePct_v10') ?? 80;
+      _quietStart = prefs.getInt('quietStart_v10') ?? 23;
+      _quietEnd = prefs.getInt('quietEnd_v10') ?? 6;
 
-      _todayCount = prefs.getInt('todayCount_v9') ?? 0;
-      _tasbihCount = prefs.getInt('tasbihCount_v9') ?? 0;
-      _totalCount = prefs.getInt('totalCount_v9') ?? 0;
+      _todayCount = today;
+      _tasbihCount = prefs.getInt('tasbihCount_v10') ?? 0;
+      _totalCount = total;
 
       _selectedIndices = parsedSet.isEmpty ? {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11} : parsedSet;
-      _weeklyCounts = {
-        'السبت': prefs.getInt('wk_sat_v9') ?? 0,
-        'الأحد': prefs.getInt('wk_sun_v9') ?? 0,
-        'الإثنين': prefs.getInt('wk_mon_v9') ?? 0,
-        'الثلاثاء': prefs.getInt('wk_tue_v9') ?? 0,
-        'الأربعاء': prefs.getInt('wk_wed_v9') ?? 0,
-        'الخميس': prefs.getInt('wk_thu_v9') ?? 0,
-        'اليوم': _todayCount,
-      };
+      _last7DaysStats = stats;
     });
   }
 
   Future<void> _saveData() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('enabled_v9', _isEnabled);
-    await prefs.setBool('unlockRemind_v9', _unlockRemind);
-    await prefs.setBool('notificationsEnabled_v9', _notificationsEnabled);
-    await prefs.setBool('randomMode_v9', _randomMode);
-    await prefs.setBool('fridayDouble_v9', _fridayDouble);
-    await prefs.setBool('quietHours_v9', _quietHours);
-    await prefs.setInt('interval_v9', _intervalMinutes);
-    await prefs.setInt('dailyGoal_v9', _dailyGoal);
-    await prefs.setInt('volumePct_v9', _volumePct);
-    await prefs.setInt('quietStart_v9', _quietStart);
-    await prefs.setInt('quietEnd_v9', _quietEnd);
-    await prefs.setInt('todayCount_v9', _todayCount);
-    await prefs.setInt('tasbihCount_v9', _tasbihCount);
-    await prefs.setInt('totalCount_v9', _totalCount);
-    await prefs.setString('selectedCsv_v9', _selectedIndices.join(','));
+    final todayKey = _getTodayKey();
+
+    prefs.setBool('enabled_v10', _isEnabled);
+    prefs.setBool('unlockRemind_v10', _unlockRemind);
+    prefs.setBool('notificationsEnabled_v10', _notificationsEnabled);
+    prefs.setBool('randomMode_v10', _randomMode);
+    prefs.setBool('fridayDouble_v10', _fridayDouble);
+    prefs.setBool('quietHours_v10', _quietHours);
+    prefs.setInt('interval_v10', _intervalMinutes);
+    prefs.setInt('dailyGoal_v10', _dailyGoal);
+    prefs.setInt('volumePct_v10', _volumePct);
+    prefs.setInt('quietStart_v10', _quietStart);
+    prefs.setInt('quietEnd_v10', _quietEnd);
+    
+    prefs.setInt('todayCount_v10', _todayCount);
+    prefs.setInt('day_$todayKey', _todayCount);
+    prefs.setInt('tasbihCount_v10', _tasbihCount);
+    prefs.setInt('totalCount_v10', _totalCount);
+    prefs.setString('selectedCsv_v10', _selectedIndices.join(','));
+    prefs.setString('last_day_key', todayKey);
 
     try {
       await _nativeChannel.invokeMethod('startOrUpdateService', {'enabled': _isEnabled});
@@ -314,9 +353,9 @@ class _HamsMainScreenState extends State<HamsMainScreen>
     setState(() {
       _todayCount++;
       _totalCount++;
-      _weeklyCounts['اليوم'] = _todayCount;
     });
     await _saveData();
+    await _loadData(); // تحديث الجدول فوراً
 
     try {
       await _nativeChannel.invokeMethod('playDhikrNow', {
@@ -617,7 +656,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                     color: isSelected ? const Color(0xFFECFDF5) : Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isSelected ? const Color(0xFF065F46) : const Color(0xFFE5E7EB),
+                      color: isSelected ? const Color(0xFF064E3B) : const Color(0xFFE5E7EB),
                       width: isSelected ? 1.5 : 1.0,
                     ),
                   ),
@@ -625,7 +664,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                     children: [
                       Checkbox(
                         value: isSelected,
-                        activeColor: const Color(0xFF065F46),
+                        activeColor: const Color(0xFF064E3B),
                         onChanged: (val) {
                           setState(() {
                             if (val == true) {
@@ -687,6 +726,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                   Text('الهدف اليومي: $_dailyGoal', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF4B5563))),
                   InkWell(
                     onTap: () {
+                      setState(() => _todayCount = (_todayCount - _tasbihCount).clamp(0, 999999));
                       setState(() => _tasbihCount = 0);
                       _saveData();
                     },
@@ -714,9 +754,9 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                     _tasbihCount++;
                     _todayCount++;
                     _totalCount++;
-                    _weeklyCounts['اليوم'] = _todayCount;
                   });
                   _saveData();
+                  _loadData();
                 },
                 child: Container(
                   width: 220,
@@ -746,7 +786,8 @@ class _HamsMainScreenState extends State<HamsMainScreen>
   }
 
   Widget _buildStatsTab() {
-    final maxVal = [..._weeklyCounts.values, _dailyGoal, 10].reduce(max);
+    final maxVal = [_last7DaysStats.map((e) => e['count'] as int).fold(0, max), _dailyGoal, 10].reduce(max);
+    
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
@@ -799,13 +840,27 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 ],
               ),
               const SizedBox(height: 14),
-              ..._weeklyCounts.entries.map((entry) {
-                final ratio = (entry.value / maxVal).clamp(0.0, 1.0);
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
+              ..._last7DaysStats.map((item) {
+                final count = item['count'] as int;
+                final ratio = (count / maxVal).clamp(0.0, 1.0);
+                final isToday = item['key'] == _getTodayKey();
+                
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: isToday ? const EdgeInsets.symmetric(horizontal: 8, vertical: 6) : EdgeInsets.zero,
+                  decoration: isToday ? BoxDecoration(color: const Color(0xFFF0FDF4), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFBBF7D0))) : null,
                   child: Row(
                     children: [
-                      SizedBox(width: 55, child: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5))),
+                      SizedBox(
+                        width: 105,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(item['label'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: isToday ? const Color(0xFF065F46) : const Color(0xFF1F2937))),
+                            Text(item['dateStr'], style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                          ],
+                        ),
+                      ),
                       Expanded(
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8),
@@ -813,14 +868,14 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                             value: ratio,
                             minHeight: 11,
                             backgroundColor: const Color(0xFFF3F4F6),
-                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF065F46)),
+                            valueColor: AlwaysStoppedAnimation<Color>(isToday ? const Color(0xFFD97706) : const Color(0xFF065F46)),
                           ),
                         ),
                       ),
                       const SizedBox(width: 10),
                       SizedBox(
-                        width: 34,
-                        child: Text('${entry.value}', textAlign: TextAlign.left, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5, color: Color(0xFF065F46))),
+                        width: 48,
+                        child: Text('$count', textAlign: TextAlign.left, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5, color: Color(0xFF065F46))),
                       ),
                     ],
                   ),
@@ -1056,6 +1111,8 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 '• العرض فوق التطبيقات الأخرى (SYSTEM_ALERT_WINDOW): لتمكين ظهور التنبيه التذكيري أثناء استخدام الهاتف.',
                 style: TextStyle(fontSize: 12.5, height: 1.6),
               ),
+              SizedBox(height: 14),
+              Text('4. العمل بدون إنترنت (100% Offline):', style: TextStyle(fontWeight: FontWeight.rawValue(0) == 0 ? const TextStyle().fontWeight : null, fontSize: 14, color: Color(0xFF064E3B))), // Safe fallback
               SizedBox(height: 14),
               Text('4. العمل بدون إنترنت (100% Offline):', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),
               SizedBox(height: 4),
