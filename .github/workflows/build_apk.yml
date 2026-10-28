@@ -434,5 +434,5 @@ jobs:
       - name: 8. Upload Hams APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: `Hams-APK`
+          name: Hams-APK
           path: build/app/outputs/flutter-apk/app-release.apk
