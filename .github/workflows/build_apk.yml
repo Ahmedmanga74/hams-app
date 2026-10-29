@@ -27,6 +27,7 @@ jobs:
       - name: 4. Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.47.8'
           channel: 'stable'
 
       - name: 5. Create Clean Flutter Project & Map All 12 MP3s
