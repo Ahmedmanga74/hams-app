@@ -621,7 +621,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                   const Expanded(
                     child: Text(
                       '🎙️ صيغ الصلاة والأذكار الصوتية',
-                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF064E3B)),
+                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF065F46)),
                     ),
                   ),
                   TextButton(
@@ -654,7 +654,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                     color: isSelected ? const Color(0xFFECFDF5) : Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isSelected ? const Color(0xFF064E3B) : const Color(0xFFE5E7EB),
+                      color: isSelected ? const Color(0xFF065F46) : const Color(0xFFE5E7EB),
                       width: isSelected ? 1.5 : 1.0,
                     ),
                   ),
@@ -679,7 +679,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                           onTap: () => _playRealMp3Dhikr(i),
                           child: Text(
                             '${isSelected ? "✓ " : ""}« ${_adhkarList[i]} »',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF064E3B), height: 1.4),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF065F46), height: 1.4),
                           ),
                         ),
                       ),
@@ -725,16 +725,14 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                   InkWell(
                     onTap: () {
                       setState(() {
-                        _todayCount = (_todayCount - _tasbihCount).clamp(0, 999999);
                         _tasbihCount = 0;
                       });
                       _saveData();
-                      _loadData();
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(10)),
-                      child: const Text('تصفير عداد اليوم ↺', style: TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.bold, fontSize: 12)),
+                      child: const Text('تصفير عداد المسبحة ↺', style: TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.bold, fontSize: 12)),
                     ),
                   ),
                 ],
@@ -958,6 +956,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                     DropdownMenuItem(value: 300, child: Text('300 صلاة')),
                     DropdownMenuItem(value: 500, child: Text('500 صلاة')),
                     DropdownMenuItem(value: 1000, child: Text('1000 صلاة')),
+                    DropdownMenuItem(value: 10000, child: Text('10000 صلاة')),
                   ],
                   onChanged: (v) {
                     if (v != null) {
