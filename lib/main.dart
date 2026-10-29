@@ -192,7 +192,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
   ];
 
   Set<int> _selectedIndices = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  List<Map<String, dynamic>> _last7DaysStats = [];
+  List> _last7DaysStats = [];
 
   @override
   void initState() {
@@ -270,15 +270,15 @@ class _HamsMainScreenState extends State<HamsMainScreen>
     int today = prefs.getInt('todayCount_v10') ?? 0;
 
     if (savedDayKey != todayKey) {
-      prefs.setInt('day_$savedDayKey', today);
+      await prefs.setInt('day_$savedDayKey', today);
       today = 0;
-      prefs.setString('last_day_key', todayKey);
-      prefs.setInt('todayCount_v10', 0);
+      await prefs.setString('last_day_key', todayKey);
+      await prefs.setInt('todayCount_v10', 0);
     } else {
       today = prefs.getInt('day_$todayKey') ?? today;
     }
 
-    List<Map<String, dynamic>> stats = [];
+    List> stats = [];
     final now = DateTime.now();
     for (int i = 0; i < 7; i++) {
       final d = now.subtract(Duration(days: i));
@@ -320,24 +320,24 @@ class _HamsMainScreenState extends State<HamsMainScreen>
     final prefs = await SharedPreferences.getInstance();
     final todayKey = _getTodayKey();
 
-    prefs.setBool('enabled_v10', _isEnabled);
-    prefs.setBool('unlockRemind_v10', _unlockRemind);
-    prefs.setBool('notificationsEnabled_v10', _notificationsEnabled);
-    prefs.setBool('randomMode_v10', _randomMode);
-    prefs.setBool('fridayDouble_v10', _fridayDouble);
-    prefs.setBool('quietHours_v10', _quietHours);
-    prefs.setInt('interval_v10', _intervalMinutes);
-    prefs.setInt('dailyGoal_v10', _dailyGoal);
-    prefs.setInt('volumePct_v10', _volumePct);
-    prefs.setInt('quietStart_v10', _quietStart);
-    prefs.setInt('quietEnd_v10', _quietEnd);
+    await prefs.setBool('enabled_v10', _isEnabled);
+    await prefs.setBool('unlockRemind_v10', _unlockRemind);
+    await prefs.setBool('notificationsEnabled_v10', _notificationsEnabled);
+    await prefs.setBool('randomMode_v10', _randomMode);
+    await prefs.setBool('fridayDouble_v10', _fridayDouble);
+    await prefs.setBool('quietHours_v10', _quietHours);
+    await prefs.setInt('interval_v10', _intervalMinutes);
+    await prefs.setInt('dailyGoal_v10', _dailyGoal);
+    await prefs.setInt('volumePct_v10', _volumePct);
+    await prefs.setInt('quietStart_v10', _quietStart);
+    await prefs.setInt('quietEnd_v10', _quietEnd);
     
-    prefs.setInt('todayCount_v10', _todayCount);
-    prefs.setInt('day_$todayKey', _todayCount);
-    prefs.setInt('tasbihCount_v10', _tasbihCount);
-    prefs.setInt('totalCount_v10', _totalCount);
-    prefs.setString('selectedCsv_v10', _selectedIndices.join(','));
-    prefs.setString('last_day_key', todayKey);
+    await prefs.setInt('todayCount_v10', _todayCount);
+    await prefs.setInt('day_$todayKey', _todayCount);
+    await prefs.setInt('tasbihCount_v10', _tasbihCount);
+    await prefs.setInt('totalCount_v10', _totalCount);
+    await prefs.setString('selectedCsv_v10', _selectedIndices.join(','));
+    await prefs.setString('last_day_key', todayKey);
 
     try {
       await _nativeChannel.invokeMethod('startOrUpdateService', {'enabled': _isEnabled});
@@ -724,9 +724,12 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                   Text('الهدف اليومي: $_dailyGoal', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF4B5563))),
                   InkWell(
                     onTap: () {
-                      setState(() => _todayCount = (_todayCount - _tasbihCount).clamp(0, 999999));
-                      setState(() => _tasbihCount = 0);
+                      setState(() {
+                        _todayCount = (_todayCount - _tasbihCount).clamp(0, 999999);
+                        _tasbihCount = 0;
+                      });
                       _saveData();
+                      _loadData();
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
