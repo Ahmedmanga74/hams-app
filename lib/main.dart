@@ -100,20 +100,10 @@ class _HamsSplashScreenState extends State<HamsSplashScreen>
                   border: Border.all(color: const Color(0xFFF59E0B), width: 3),
                 ),
                 alignment: Alignment.center,
-                child: const Text(
-                  'ﷺ',
-                  style: TextStyle(fontSize: 54, color: Color(0xFFFBBF24)),
-                ),
+                child: const Text('ﷺ', style: TextStyle(fontSize: 54, color: Color(0xFFFBBF24))),
               ),
               const SizedBox(height: 22),
-              const Text(
-                'هَمْس | Hams',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 34,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              const Text('هَمْس | Hams', style: TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 32),
@@ -125,17 +115,11 @@ class _HamsSplashScreenState extends State<HamsSplashScreen>
                 child: const Text(
                   '« رَفِيقُكَ الدَّائِمُ لِلتَّذْكِيرِ بِالصَّلَاةِ عَلَى النَّبِيِّ ﷺ »',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFFFEF3C7),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(color: Color(0xFFFEF3C7), fontSize: 15, fontWeight: FontWeight.w600),
                 ),
               ),
               const SizedBox(height: 40),
-              const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
-              ),
+              const CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24))),
             ],
           ),
         ),
@@ -151,8 +135,7 @@ class HamsMainScreen extends StatefulWidget {
   State<HamsMainScreen> createState() => _HamsMainScreenState();
 }
 
-class _HamsMainScreenState extends State<HamsMainScreen>
-    with WidgetsBindingObserver {
+class _HamsMainScreenState extends State<HamsMainScreen> with WidgetsBindingObserver {
   final Random _random = Random();
 
   int _currentIndex = 0;
@@ -244,33 +227,17 @@ class _HamsMainScreenState extends State<HamsMainScreen>
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final target = DateTime(date.year, date.month, date.day);
-
     if (target == today) return 'اليوم';
     if (target == today.subtract(const Duration(days: 1))) return 'أمس';
-
-    const days = [
-      'الإثنين',
-      'الثلاثاء',
-      'الأربعاء',
-      'الخميس',
-      'الجمعة',
-      'السبت',
-      'الأحد'
-    ];
+    const days = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
     return days[date.weekday - 1];
   }
 
   Future<void> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
-
-    final csv =
-        prefs.getString('selectedCsv_v10') ?? '0,1,2,3,4,5,6,7,8,9,10,11';
-    final parsedSet = csv
-        .split(',')
-        .map((e) => int.tryParse(e.trim()) ?? -1)
-        .where((i) => i >= 0 && i < _adhkarList.length)
-        .toSet();
+    final csv = prefs.getString('selectedCsv_v10') ?? '0,1,2,3,4,5,6,7,8,9,10,11';
+    final parsedSet = csv.split(',').map((e) => int.tryParse(e.trim()) ?? -1).where((i) => i >= 0 && i < _adhkarList.length).toSet();
 
     final todayKey = _getTodayKey();
     final savedDayKey = prefs.getString('last_day_key') ?? todayKey;
@@ -287,25 +254,22 @@ class _HamsMainScreenState extends State<HamsMainScreen>
       today = prefs.getInt('day_$todayKey') ?? today;
     }
 
-    final List> computedStats = [];
+    final List> dayList = [];
     final now = DateTime.now();
     for (int i = 0; i < 7; i++) {
       final d = now.subtract(Duration(days: i));
-      final k =
-          "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
+      final k = "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
       final count = i == 0 ? today : (prefs.getInt('day_$k') ?? 0);
-
-      computedStats.add({
+      dayList.add({
         'key': k,
         'label': _formatDayName(d),
-        'dateStr':
-            '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}',
+        'dateStr': '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}',
         'count': count,
       });
     }
 
     int loadedGoal = prefs.getInt('dailyGoal_v10') ?? 100;
-    if (![100, 300, 500, 1000, 10000].contains(loadedGoal)) {
+    if (loadedGoal != 100 && loadedGoal != 300 && loadedGoal != 500 && loadedGoal != 1000 && loadedGoal != 10000) {
       loadedGoal = 100;
     }
 
@@ -322,21 +286,17 @@ class _HamsMainScreenState extends State<HamsMainScreen>
       _volumePct = prefs.getInt('volumePct_v10') ?? 80;
       _quietStart = prefs.getInt('quietStart_v10') ?? 23;
       _quietEnd = prefs.getInt('quietEnd_v10') ?? 6;
-
       _todayCount = today;
       _tasbihCount = prefs.getInt('tasbihCount_v10') ?? 0;
       _totalCount = total;
-
-      _selectedIndices =
-          parsedSet.isEmpty ? {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11} : parsedSet;
-      _last7DaysStats = computedStats;
+      _selectedIndices = parsedSet.isEmpty ? {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11} : parsedSet;
+      _last7DaysStats = dayList;
     });
   }
 
   Future<void> _saveData() async {
     final prefs = await SharedPreferences.getInstance();
     final todayKey = _getTodayKey();
-
     await prefs.setBool('enabled_v10', _isEnabled);
     await prefs.setBool('unlockRemind_v10', _unlockRemind);
     await prefs.setBool('notificationsEnabled_v10', _notificationsEnabled);
@@ -348,31 +308,26 @@ class _HamsMainScreenState extends State<HamsMainScreen>
     await prefs.setInt('volumePct_v10', _volumePct);
     await prefs.setInt('quietStart_v10', _quietStart);
     await prefs.setInt('quietEnd_v10', _quietEnd);
-
     await prefs.setInt('todayCount_v10', _todayCount);
     await prefs.setInt('day_$todayKey', _todayCount);
     await prefs.setInt('tasbihCount_v10', _tasbihCount);
     await prefs.setInt('totalCount_v10', _totalCount);
     await prefs.setString('selectedCsv_v10', _selectedIndices.join(','));
     await prefs.setString('last_day_key', todayKey);
-
     try {
-      await _nativeChannel
-          .invokeMethod('startOrUpdateService', {'enabled': _isEnabled});
+      await _nativeChannel.invokeMethod('startOrUpdateService', {'enabled': _isEnabled});
     } catch (_) {}
   }
 
   Future<void> _playRealMp3Dhikr(int index) async {
     final text = _adhkarList[index];
     HapticFeedback.mediumImpact();
-
     setState(() {
       _todayCount++;
       _totalCount++;
     });
     await _saveData();
     await _loadData();
-
     try {
       await _nativeChannel.invokeMethod('playDhikrNow', {
         'index': index,
@@ -380,16 +335,12 @@ class _HamsMainScreenState extends State<HamsMainScreen>
         'showNotif': _notificationsEnabled,
       });
     } catch (_) {}
-
     if (mounted) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: const Color(0xFF065F46),
-          content: Text(
-            '🔊 « $text »',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-          ),
+          content: Text('🔊 « $text »', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -397,11 +348,8 @@ class _HamsMainScreenState extends State<HamsMainScreen>
   }
 
   Future<void> _triggerRandomSalawat() async {
-    final pool = _selectedIndices.isNotEmpty
-        ? _selectedIndices.toList()
-        : List.generate(_adhkarList.length, (i) => i);
-    final chosenIndex =
-        _randomMode ? pool[_random.nextInt(pool.length)] : pool.first;
+    final pool = _selectedIndices.isNotEmpty ? _selectedIndices.toList() : List.generate(_adhkarList.length, (i) => i);
+    final chosenIndex = _randomMode ? pool[_random.nextInt(pool.length)] : pool.first;
     await _playRealMp3Dhikr(chosenIndex);
   }
 
@@ -420,7 +368,6 @@ class _HamsMainScreenState extends State<HamsMainScreen>
       _buildSettingsTab(),
       _buildPrivacyTab(),
     ];
-
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F5),
       appBar: PreferredSize(
@@ -438,40 +385,18 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                     Container(
                       width: 42,
                       height: 42,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF064E3B),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      decoration: BoxDecoration(color: const Color(0xFF064E3B), borderRadius: BorderRadius.circular(12)),
                       alignment: Alignment.center,
-                      child: const Text('ﷺ',
-                          style:
-                              TextStyle(color: Color(0xFFFBBF24), fontSize: 22)),
+                      child: const Text('ﷺ', style: TextStyle(color: Color(0xFFFBBF24), fontSize: 22)),
                     ),
                     const SizedBox(width: 10),
-                    const Text(
-                      'هَمْس | Hams',
-                      style: TextStyle(
-                          color: Color(0xFF064E3B),
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900),
-                    ),
+                    const Text('هَمْس | Hams', style: TextStyle(color: Color(0xFF064E3B), fontSize: 20, fontWeight: FontWeight.w900)),
                   ],
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFECFDF5),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFA7F3D0)),
-                  ),
-                  child: Text(
-                    '🔊 صوت مستقل: $_volumePct%',
-                    style: const TextStyle(
-                        color: Color(0xFF065F46),
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.bold),
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFA7F3D0))),
+                  child: Text('🔊 صوت مستقل: $_volumePct%', style: const TextStyle(color: Color(0xFF065F46), fontSize: 11.5, fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
@@ -485,32 +410,11 @@ class _HamsMainScreenState extends State<HamsMainScreen>
         selectedIndex: _currentIndex,
         onDestinationSelected: (idx) => setState(() => _currentIndex = idx),
         destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.notifications_active_outlined),
-            selectedIcon:
-                Icon(Icons.notifications_active, color: Color(0xFF065F46)),
-            label: 'الرئيسية',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.radio_button_checked),
-            selectedIcon: Icon(Icons.touch_app, color: Color(0xFF065F46)),
-            label: 'المسبحة',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart, color: Color(0xFF065F46)),
-            label: 'الإحصائيات',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings, color: Color(0xFF065F46)),
-            label: 'الإعدادات',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.shield_outlined),
-            selectedIcon: Icon(Icons.shield, color: Color(0xFF065F46)),
-            label: 'الخصوصية',
-          ),
+          NavigationDestination(icon: Icon(Icons.notifications_active_outlined), selectedIcon: Icon(Icons.notifications_active, color: Color(0xFF065F46)), label: 'الرئيسية'),
+          NavigationDestination(icon: Icon(Icons.radio_button_checked), selectedIcon: Icon(Icons.touch_app, color: Color(0xFF065F46)), label: 'المسبحة'),
+          NavigationDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart, color: Color(0xFF065F46)), label: 'الإحصائيات'),
+          NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings, color: Color(0xFF065F46)), label: 'الإعدادات'),
+          NavigationDestination(icon: Icon(Icons.shield_outlined), selectedIcon: Icon(Icons.shield, color: Color(0xFF065F46)), label: 'الخصوصية'),
         ],
       ),
     );
@@ -524,35 +428,15 @@ class _HamsMainScreenState extends State<HamsMainScreen>
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF064E3B), Color(0xFF047857)],
-              begin: Alignment.topRight,
-              end: Alignment.bottomLeft,
-            ),
+            gradient: const LinearGradient(colors: [Color(0xFF064E3B), Color(0xFF047857)], begin: Alignment.topRight, end: Alignment.bottomLeft),
             borderRadius: BorderRadius.circular(22),
           ),
           child: Column(
             children: [
-              const Text(
-                '﴿ إِنَّ اللَّهَ وَمَلَائِكَتَهُ يُصَلُّونَ عَلَى النَّبِيِّ ﴾',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold),
-              ),
+              const Text('﴿ إِنَّ اللَّهَ وَمَلَائِكَتَهُ يُصَلُّونَ عَلَى النَّبِيِّ ﴾', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
-              const Text(
-                'صَلِّ عَلَى مُحَمَّدٍ ﷺ',
-                style: TextStyle(
-                    color: Color(0xFFFDE68A),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Divider(color: Colors.white24, height: 1),
-              ),
+              const Text('صَلِّ عَلَى مُحَمَّدٍ ﷺ', style: TextStyle(color: Color(0xFFFDE68A), fontSize: 15, fontWeight: FontWeight.w600)),
+              const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(color: Colors.white24, height: 1)),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -560,23 +444,9 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          _isEnabled
-                              ? 'التذكير الصوتي نشط (كل $_intervalMinutes د)'
-                              : 'التذكير الصوتي متوقف مؤقتاً',
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14),
-                        ),
+                        Text(_isEnabled ? 'التذكير الصوتي نشط (كل $_intervalMinutes د)' : 'التذكير الصوتي متوقف مؤقتاً', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                         const SizedBox(height: 2),
-                        Text(
-                          _unlockRemind
-                              ? 'يعمل دورياً + عند فتح قفل الشاشة'
-                              : 'يعمل دورياً في الخلفية',
-                          style: const TextStyle(
-                              color: Color(0xFFA7F3D0), fontSize: 12),
-                        ),
+                        Text(_unlockRemind ? 'يعمل دورياً + عند فتح قفل الشاشة' : 'يعمل دورياً في الخلفية', style: const TextStyle(color: Color(0xFFA7F3D0), fontSize: 12)),
                       ],
                     ),
                   ),
@@ -597,60 +467,28 @@ class _HamsMainScreenState extends State<HamsMainScreen>
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
-          ),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),
           child: Column(
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'صلواتك اليوم على النبي ﷺ',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14.5,
-                        color: Color(0xFF1F2937)),
-                  ),
-                  Text(
-                    '$_todayCount / $_dailyGoal',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 15,
-                        color: Color(0xFF065F46)),
-                  ),
+                  const Text('صلواتك اليوم على النبي ﷺ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: Color(0xFF1F2937))),
+                  Text('$_todayCount / $_dailyGoal', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Color(0xFF065F46))),
                 ],
               ),
               const SizedBox(height: 10),
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 10,
-                  backgroundColor: const Color(0xFFF3F4F6),
-                  valueColor:
-                      const AlwaysStoppedAnimation<Color>(Color(0xFF15803D)),
-                ),
+                child: LinearProgressIndicator(value: progress, minHeight: 10, backgroundColor: const Color(0xFFF3F4F6), valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF15803D))),
               ),
               const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF064E3B),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF064E3B), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 13), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
                   onPressed: () => _triggerRandomSalawat(),
-                  child: const Text(
-                    '♥ صلِّ على النبي الآن (مع سماع الهمسة)',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
-                  ),
+                  child: const Text('♥ صلِّ على النبي الآن (مع سماع الهمسة)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5)),
                 ),
               ),
             ],
@@ -659,57 +497,27 @@ class _HamsMainScreenState extends State<HamsMainScreen>
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
-          ),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Expanded(
-                    child: Text(
-                      '🎙️ صيغ الصلاة والأذكار الصوتية',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 14.5,
-                          color: Color(0xFF065F46)),
-                    ),
-                  ),
+                  const Expanded(child: Text('🎙️ صيغ الصلاة والأذكار الصوتية', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF065F46)))),
                   TextButton(
                     onPressed: () {
-                      setState(() => _selectedIndices = {
-                            0,
-                            1,
-                            2,
-                            3,
-                            4,
-                            5,
-                            6,
-                            7,
-                            8,
-                            9,
-                            10,
-                            11
-                          });
+                      setState(() => _selectedIndices = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
                       _saveData();
                     },
-                    child:
-                        const Text('تحديد الكل', style: TextStyle(fontSize: 12)),
+                    child: const Text('تحديد الكل', style: TextStyle(fontSize: 12)),
                   ),
                 ],
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('🎲 التشغيل العشوائي بين الصيغ المحددة',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                subtitle: Text(
-                    'محدد حالياً ${_selectedIndices.length} من 12 صيغة صوتية',
-                    style: const TextStyle(fontSize: 11.5)),
+                title: const Text('🎲 التشغيل العشوائي بين الصيغ المحددة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                subtitle: Text('محدد حالياً ${_selectedIndices.length} من 12 صيغة صوتية', style: const TextStyle(fontSize: 11.5)),
                 value: _randomMode,
                 activeColor: const Color(0xFF065F46),
                 onChanged: (val) {
@@ -726,12 +534,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                   decoration: BoxDecoration(
                     color: isSelected ? const Color(0xFFECFDF5) : Colors.white,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isSelected
-                          ? const Color(0xFF065F46)
-                          : const Color(0xFFE5E7EB),
-                      width: isSelected ? 1.5 : 1.0,
-                    ),
+                    border: Border.all(color: isSelected ? const Color(0xFF065F46) : const Color(0xFFE5E7EB), width: isSelected ? 1.5 : 1.0),
                   ),
                   child: Row(
                     children: [
@@ -752,14 +555,7 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                       Expanded(
                         child: InkWell(
                           onTap: () => _playRealMp3Dhikr(i),
-                          child: Text(
-                            '${isSelected ? "✓ " : ""}« ${_adhkarList[i]} »',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13.5,
-                                color: Color(0xFF065F46),
-                                height: 1.4),
-                          ),
+                          child: Text('${isSelected ? "✓ " : ""}« ${_adhkarList[i]} »', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF065F46), height: 1.4)),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -768,11 +564,9 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                         child: Container(
                           width: 40,
                           height: 40,
-                          decoration: const BoxDecoration(
-                              shape: BoxShape.circle, color: Color(0xFF064E3B)),
+                          decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF064E3B)),
                           alignment: Alignment.center,
-                          child:
-                              const Icon(Icons.play_arrow, color: Colors.white),
+                          child: const Icon(Icons.play_arrow, color: Colors.white),
                         ),
                       ),
                     ],
@@ -792,21 +586,13 @@ class _HamsMainScreenState extends State<HamsMainScreen>
       children: [
         Container(
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
-          ),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: const Color(0xFFE5E7EB))),
           child: Column(
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('الهدف اليومي: $_dailyGoal',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13.5,
-                          color: Color(0xFF4B5563))),
+                  Text('الهدف اليومي: $_dailyGoal', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF4B5563))),
                   InkWell(
                     onTap: () {
                       setState(() {
@@ -815,33 +601,17 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                       _saveData();
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                          color: const Color(0xFFFEE2E2),
-                          borderRadius: BorderRadius.circular(10)),
-                      child: const Text('تصفير عداد المسبحة ↺',
-                          style: TextStyle(
-                              color: Color(0xFFDC2626),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(10)),
+                      child: const Text('تصفير عداد المسبحة ↺', style: TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.bold, fontSize: 12)),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 22),
-              const Text(
-                'اللَّهُمَّ صَلِّ وَسَلِّمْ وَبَارِكْ عَلَى نَبِيِّنَا مُحَمَّدٍ ﷺ',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF064E3B),
-                    height: 1.5),
-              ),
+              const Text('اللَّهُمَّ صَلِّ وَسَلِّمْ وَبَارِكْ عَلَى نَبِيِّنَا مُحَمَّدٍ ﷺ', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF064E3B), height: 1.5)),
               const SizedBox(height: 6),
-              const Text('اضغط على الدائرة للتسبيح والصلاة على النبي ﷺ',
-                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const Text('اضغط على الدائرة للتسبيح والصلاة على النبي ﷺ', style: TextStyle(fontSize: 12, color: Colors.grey)),
               const SizedBox(height: 24),
               GestureDetector(
                 onTap: () {
@@ -859,31 +629,16 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                   height: 220,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: const RadialGradient(
-                        colors: [Color(0xFF15803D), Color(0xFF064E3B)]),
-                    border:
-                        Border.all(color: const Color(0xFFD97706), width: 6),
-                    boxShadow: const [
-                      BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 16,
-                          offset: Offset(0, 8))
-                    ],
+                    gradient: const RadialGradient(colors: [Color(0xFF15803D), Color(0xFF064E3B)]),
+                    border: Border.all(color: const Color(0xFFD97706), width: 6),
+                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 16, offset: Offset(0, 8))],
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('$_tasbihCount',
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 52,
-                              fontWeight: FontWeight.w900)),
+                      Text('$_tasbihCount', style: const TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 4),
-                      const Text('اضغط للصلاة على النبي ﷺ',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600)),
+                      const Text('اضغط للصلاة على النبي ﷺ', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ),
@@ -898,11 +653,9 @@ class _HamsMainScreenState extends State<HamsMainScreen>
 
   Widget _buildStatsTab() {
     int maxVal = _dailyGoal > 10 ? _dailyGoal : 10;
-    for (final item in _last7DaysStats) {
-      final int c = (item['count'] as int?) ?? 0;
-      if (c > maxVal) {
-        maxVal = c;
-      }
+    for (int i = 0; i < _last7DaysStats.length; i++) {
+      final int c = (_last7DaysStats[i]['count'] as int?) ?? 0;
+      if (c > maxVal) maxVal = c;
     }
 
     return ListView(
@@ -913,27 +666,14 @@ class _HamsMainScreenState extends State<HamsMainScreen>
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFE5E7EB))),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE5E7EB))),
                 child: Column(
                   children: [
-                    const Text('حصاد اليوم',
-                        style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.bold)),
+                    const Text('حصاد اليوم', style: TextStyle(color: Colors.grey, fontSize: 12.5, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 6),
-                    Text('$_todayCount',
-                        style: const TextStyle(
-                            color: Color(0xFF065F46),
-                            fontSize: 30,
-                            fontWeight: FontWeight.w900)),
+                    Text('$_todayCount', style: const TextStyle(color: Color(0xFF065F46), fontSize: 30, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 4),
-                    Text('الهدف اليومي: $_dailyGoal',
-                        style:
-                            const TextStyle(color: Colors.grey, fontSize: 11)),
+                    Text('الهدف اليومي: $_dailyGoal', style: const TextStyle(color: Colors.grey, fontSize: 11)),
                   ],
                 ),
               ),
@@ -942,27 +682,14 @@ class _HamsMainScreenState extends State<HamsMainScreen>
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFE5E7EB))),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE5E7EB))),
                 child: Column(
                   children: [
-                    const Text('الحصاد منذ تثبيت التطبيق',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.bold)),
+                    const Text('الحصاد منذ تثبيت التطبيق', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 11.5, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 6),
-                    Text('$_totalCount',
-                        style: const TextStyle(
-                            color: Color(0xFFB45309),
-                            fontSize: 30,
-                            fontWeight: FontWeight.w900)),
+                    Text('$_totalCount', style: const TextStyle(color: Color(0xFFB45309), fontSize: 30, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 4),
-                    const Text('إجمالي الحصاد الكلي',
-                        style: TextStyle(color: Colors.grey, fontSize: 11)),
+                    const Text('إجمالي الحصاد الكلي', style: TextStyle(color: Colors.grey, fontSize: 11)),
                   ],
                 ),
               ),
@@ -972,25 +699,14 @@ class _HamsMainScreenState extends State<HamsMainScreen>
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE5E7EB))),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),
           child: Column(
             children: [
               const Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('📊 نشاطك خلال آخر 7 أيام',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 14.5,
-                          color: Color(0xFF065F46))),
-                  Text('تحديث فوري',
-                      style: TextStyle(
-                          color: Color(0xFF15803D),
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.bold)),
+                  Text('📊 نشاطك خلال آخر 7 أيام', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF065F46))),
+                  Text('تحديث فوري', style: TextStyle(color: Color(0xFF15803D), fontSize: 11.5, fontWeight: FontWeight.bold)),
                 ],
               ),
               const SizedBox(height: 14),
@@ -998,18 +714,10 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 final int count = (item['count'] as int?) ?? 0;
                 final double ratio = (count / maxVal).clamp(0.0, 1.0);
                 final bool isToday = item['key'] == _getTodayKey();
-
                 return Container(
                   margin: const EdgeInsets.only(bottom: 10),
-                  padding: isToday
-                      ? const EdgeInsets.symmetric(horizontal: 8, vertical: 6)
-                      : EdgeInsets.zero,
-                  decoration: isToday
-                      ? BoxDecoration(
-                          color: const Color(0xFFF0FDF4),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFBBF7D0)))
-                      : null,
+                  padding: isToday ? const EdgeInsets.symmetric(horizontal: 8, vertical: 6) : EdgeInsets.zero,
+                  decoration: isToday ? BoxDecoration(color: const Color(0xFFF0FDF4), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFBBF7D0))) : null,
                   child: Row(
                     children: [
                       SizedBox(
@@ -1017,16 +725,8 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(item['label'].toString(),
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12.5,
-                                    color: isToday
-                                        ? const Color(0xFF065F46)
-                                        : const Color(0xFF1F2937))),
-                            Text(item['dateStr'].toString(),
-                                style: const TextStyle(
-                                    fontSize: 10, color: Colors.grey)),
+                            Text('${item['label']}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: isToday ? const Color(0xFF065F46) : const Color(0xFF1F2937))),
+                            Text('${item['dateStr']}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
                           ],
                         ),
                       ),
@@ -1037,21 +737,14 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                             value: ratio,
                             minHeight: 11,
                             backgroundColor: const Color(0xFFF3F4F6),
-                            valueColor: AlwaysStoppedAnimation<Color>(isToday
-                                ? const Color(0xFFD97706)
-                                : const Color(0xFF065F46)),
+                            valueColor: AlwaysStoppedAnimation<Color>(isToday ? const Color(0xFFD97706) : const Color(0xFF065F46)),
                           ),
                         ),
                       ),
                       const SizedBox(width: 10),
                       SizedBox(
                         width: 48,
-                        child: Text('$count',
-                            textAlign: TextAlign.left,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12.5,
-                                color: Color(0xFF065F46))),
+                        child: Text('$count', textAlign: TextAlign.left, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5, color: Color(0xFF065F46))),
                       ),
                     ],
                   ),
@@ -1070,29 +763,18 @@ class _HamsMainScreenState extends State<HamsMainScreen>
       children: [
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE5E7EB))),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('⚙️ طريقة التذكير والتكرار',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 15,
-                      color: Color(0xFF065F46))),
+              const Text('⚙️ طريقة التذكير والتكرار', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Color(0xFF065F46))),
               const SizedBox(height: 10),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 activeColor: const Color(0xFF065F46),
                 value: _unlockRemind,
-                title: const Text('التذكير عند فتح قفل الشاشة',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                subtitle: const Text(
-                    'تشغيل الهمسة الصوتية فور فتح شاشة الهاتف',
-                    style: TextStyle(fontSize: 11.5, color: Colors.grey)),
+                title: const Text('التذكير عند فتح قفل الشاشة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                subtitle: const Text('تشغيل الهمسة الصوتية فور فتح شاشة الهاتف', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
                 onChanged: (v) {
                   setState(() => _unlockRemind = v ?? true);
                   _saveData();
@@ -1101,11 +783,8 @@ class _HamsMainScreenState extends State<HamsMainScreen>
               const Divider(),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('معدل التكرار الدوري',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                subtitle: const Text('يعمل في الخلفية بانتظام',
-                    style: TextStyle(fontSize: 11.5, color: Colors.grey)),
+                title: const Text('معدل التكرار الدوري', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                subtitle: const Text('يعمل في الخلفية بانتظام', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
                 trailing: DropdownButton<int>(
                   value: _intervalMinutes,
                   items: const [
@@ -1128,12 +807,8 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 contentPadding: EdgeInsets.zero,
                 activeColor: const Color(0xFF065F46),
                 value: _fridayDouble,
-                title: const Text('مضاعفة التذكير يوم الجمعة',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                subtitle: const Text(
-                    'تقليص الفترة الزمنية للنصف يوم الجمعة المبارك',
-                    style: TextStyle(fontSize: 11.5, color: Colors.grey)),
+                title: const Text('مضاعفة التذكير يوم الجمعة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                subtitle: const Text('تقليص الفترة الزمنية للنصف يوم الجمعة المبارك', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
                 onChanged: (v) {
                   setState(() => _fridayDouble = v ?? true);
                   _saveData();
@@ -1142,12 +817,8 @@ class _HamsMainScreenState extends State<HamsMainScreen>
               const Divider(),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('الهدف اليومي من الصلوات',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                subtitle: const Text(
-                    'تخصيص هدفك في المسبحة والشاشة الرئيسية',
-                    style: TextStyle(fontSize: 11.5, color: Colors.grey)),
+                title: const Text('الهدف اليومي من الصلوات', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                subtitle: const Text('تخصيص هدفك في المسبحة والشاشة الرئيسية', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
                 trailing: DropdownButton<int>(
                   value: _dailyGoal,
                   items: const [
@@ -1171,25 +842,15 @@ class _HamsMainScreenState extends State<HamsMainScreen>
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE5E7EB))),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('🔊 مستوى صوت الهمسة المستقل',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 14.5,
-                          color: Color(0xFF065F46))),
-                  Text('$_volumePct%',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF065F46))),
+                  const Text('🔊 مستوى صوت الهمسة المستقل', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF065F46))),
+                  Text('$_volumePct%', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF065F46))),
                 ],
               ),
               Slider(
@@ -1202,36 +863,20 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                   _saveData();
                 },
               ),
-              const Text(
-                'يتحكم بقوة صوت التذكير بشكل مستقل عن مستوى وسائط الهاتف مع خفض الأصوات الأخرى بلطف أثناء الهمسة.',
-                style:
-                    TextStyle(fontSize: 11.5, color: Colors.grey, height: 1.5),
-              ),
+              const Text('يتحكم بقوة صوت التذكير بشكل مستقل عن مستوى وسائط الهاتف مع خفض الأصوات الأخرى بلطف أثناء الهمسة.', style: TextStyle(fontSize: 11.5, color: Colors.grey, height: 1.5)),
             ],
           ),
         ),
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE5E7EB))),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),
           child: CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             activeColor: const Color(0xFF065F46),
             value: _quietHours,
-            title: const Text('🌙 أوقات الهدوء (عدم الإزعاج)',
-                style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14.5,
-                    color: Color(0xFF065F46))),
-            subtitle: Text(
-              _quietHours
-                  ? 'يتم كتم الصوت تلقائياً من $_quietStart:00 إلى $_quietEnd:00'
-                  : 'التطبيق يعمل حالياً 24 ساعة بدون توقف',
-              style: const TextStyle(fontSize: 11.5, color: Colors.grey),
-            ),
+            title: const Text('🌙 أوقات الهدوء (عدم الإزعاج)', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF065F46))),
+            subtitle: Text(_quietHours ? 'يتم كتم الصوت تلقائياً من $_quietStart:00 إلى $_quietEnd:00' : 'التطبيق يعمل حالياً 24 ساعة بدون توقف', style: const TextStyle(fontSize: 11.5, color: Colors.grey)),
             onChanged: (v) {
               setState(() => _quietHours = v ?? false);
               _saveData();
@@ -1241,38 +886,24 @@ class _HamsMainScreenState extends State<HamsMainScreen>
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE5E7EB))),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('🛡️ أذونات الهاتف والعمل في الخلفية',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 15,
-                      color: Color(0xFF065F46))),
+              const Text('🛡️ أذونات الهاتف والعمل في الخلفية', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Color(0xFF065F46))),
               const SizedBox(height: 10),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 activeColor: const Color(0xFF065F46),
                 value: _permOverlay,
-                title: const Text('العرض فوق التطبيقات الأخرى',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                title: const Text('العرض فوق التطبيقات الأخرى', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
                 subtitle: const Padding(
                   padding: EdgeInsets.only(top: 4),
-                  child: Text(
-                    'يسمح هذا الإذن للتطبيق بالظهور فوق التطبيقات الأخرى . وقد يؤثر ذلك في كيفية عرض التطبيقات الأخرى .',
-                    style: TextStyle(
-                        fontSize: 11.5, color: Color(0xFFB45309), height: 1.5),
-                  ),
+                  child: Text('يسمح هذا الإذن للتطبيق بالظهور فوق التطبيقات الأخرى . وقد يؤثر ذلك في كيفية عرض التطبيقات الأخرى .', style: TextStyle(fontSize: 11.5, color: Color(0xFFB45309), height: 1.5)),
                 ),
                 onChanged: (_) async {
                   try {
-                    await _nativeChannel
-                        .invokeMethod('requestOverlayPermission');
+                    await _nativeChannel.invokeMethod('requestOverlayPermission');
                   } catch (_) {}
                 },
               ),
@@ -1281,19 +912,11 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 contentPadding: EdgeInsets.zero,
                 activeColor: const Color(0xFF065F46),
                 value: _permNotif && _notificationsEnabled,
-                title: const Text('إذن الإشعارات والتنبيهات الصوتية',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                subtitle: Text(
-                  _permNotif
-                      ? 'مفعل ويعرض إشعار الذكر مع كل همسة'
-                      : 'اضغط لمنح إذن الإشعارات للتطبيق',
-                  style: const TextStyle(fontSize: 11.5, color: Colors.grey),
-                ),
+                title: const Text('إذن الإشعارات والتنبيهات الصوتية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                subtitle: Text(_permNotif ? 'مفعل ويعرض إشعار الذكر مع كل همسة' : 'اضغط لمنح إذن الإشعارات للتطبيق', style: const TextStyle(fontSize: 11.5, color: Colors.grey)),
                 onChanged: (val) async {
                   try {
-                    await _nativeChannel
-                        .invokeMethod('requestNotificationPermission');
+                    await _nativeChannel.invokeMethod('requestNotificationPermission');
                     setState(() => _notificationsEnabled = val);
                     await _saveData();
                     await _refreshPermissions();
@@ -1305,16 +928,11 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 contentPadding: EdgeInsets.zero,
                 activeColor: const Color(0xFF065F46),
                 value: _permBattery,
-                title: const Text('العمل في الخلفية دون قيود البطارية',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                subtitle: const Text(
-                    'يضمن استمرار نطق الذكر عند فتح الشاشة وفي الخلفية',
-                    style: TextStyle(fontSize: 11.5, color: Colors.grey)),
+                title: const Text('العمل في الخلفية دون قيود البطارية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                subtitle: const Text('يضمن استمرار نطق الذكر عند فتح الشاشة وفي الخلفية', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
                 onChanged: (_) async {
                   try {
-                    await _nativeChannel
-                        .invokeMethod('requestBatteryExemption');
+                    await _nativeChannel.invokeMethod('requestBatteryExemption');
                   } catch (_) {}
                 },
               ),
@@ -1331,38 +949,19 @@ class _HamsMainScreenState extends State<HamsMainScreen>
       children: [
         Container(
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE5E7EB))),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),
           child: const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('1. عدم جمع أو مشاركة البيانات الشخصية:',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                      color: Color(0xFF064E3B))),
+              Text('1. عدم جمع أو مشاركة البيانات الشخصية:', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),
               SizedBox(height: 4),
-              Text(
-                  'صُمم تطبيق «هَمْس | Hams» ليكون صدقة جارية ورفيقاً روحانياً خالصاً؛ لذا فإن التطبيق لا يجمع، ولا يخزن في خوادم خارجية، ولا يشارك أي بيانات شخصية أو موقع جغرافي أو جهات اتصال مع أي طرف ثالث.',
-                  style: TextStyle(fontSize: 12.5, height: 1.6)),
+              Text('صُمم تطبيق «هَمْس | Hams» ليكون صدقة جارية ورفيقاً روحانياً خالصاً؛ لذا فإن التطبيق لا يجمع، ولا يخزن في خوادم خارجية، ولا يشارك أي بيانات شخصية أو موقع جغرافي أو جهات اتصال مع أي طرف ثالث.', style: TextStyle(fontSize: 12.5, height: 1.6)),
               SizedBox(height: 14),
-              Text('2. التخزين المحلي فقط (On-Device Storage):',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                      color: Color(0xFF064E3B))),
+              Text('2. التخزين المحلي فقط (On-Device Storage):', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),
               SizedBox(height: 4),
-              Text(
-                  'جميع إحصائيات صلواتك على النبي ﷺ، وعداد المسبحة، وتفضيلات الصوت ومعدل التكرار تُحفظ محلياً داخل ذاكرة هاتفك فقط (SharedPreferences)، ويمكنك تصفيرها أو حذفها في أي وقت.',
-                  style: TextStyle(fontSize: 12.5, height: 1.6)),
+              Text('جميع إحصائيات صلواتك على النبي ﷺ، وعداد المسبحة، وتفضيلات الصوت ومعدل التكرار تُحفظ محلياً داخل ذاكرة هاتفك فقط (SharedPreferences)، ويمكنك تصفيرها أو حذفها في أي وقت.', style: TextStyle(fontSize: 12.5, height: 1.6)),
               SizedBox(height: 14),
-              Text('3. الأذونات المطلوبة وسبب استخدامها:',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                      color: Color(0xFF064E3B))),
+              Text('3. الأذونات المطلوبة وسبب استخدامها:', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),
               SizedBox(height: 4),
               Text(
                 '• مستشعر حالة الشاشة (SCREEN_STATE): لتشغيل التذكير الصوتي بالصلاة على النبي ﷺ فور فتح قفل شاشة الهاتف فقط دون تسجيل أي نشاط.\n'
@@ -1371,15 +970,9 @@ class _HamsMainScreenState extends State<HamsMainScreen>
                 style: TextStyle(fontSize: 12.5, height: 1.6),
               ),
               SizedBox(height: 14),
-              Text('4. العمل بدون إنترنت (100% Offline):',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                      color: Color(0xFF064E3B))),
+              Text('4. العمل بدون إنترنت (100% Offline):', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),
               SizedBox(height: 4),
-              Text(
-                  'يعمل التطبيق وجميع ملفاته الصوتية البشرية (MP3) بالكامل بدون الحاجة إلى اتصال بالإنترنت، ولا يتضمن أي برمجيات تتبع إعلانية.',
-                  style: TextStyle(fontSize: 12.5, height: 1.6)),
+              Text('يعمل التطبيق وجميع ملفاته الصوتية البشرية (MP3) بالكامل بدون الحاجة إلى اتصال بالإنترنت، ولا يتضمن أي برمجيات تتبع إعلانية.', style: TextStyle(fontSize: 12.5, height: 1.6)),
             ],
           ),
         ),
