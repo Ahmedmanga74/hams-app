@@ -175,7 +175,7 @@ class _HamsMainScreenState extends State<HamsMainScreen> with WidgetsBindingObse
   ];
 
   Set<int> _selectedIndices = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  List> _last7DaysStats = [];
+  final List> _last7DaysStats = [];
 
   @override
   void initState() {
@@ -254,20 +254,6 @@ class _HamsMainScreenState extends State<HamsMainScreen> with WidgetsBindingObse
       today = prefs.getInt('day_$todayKey') ?? today;
     }
 
-    final List> dayList = [];
-    final now = DateTime.now();
-    for (int i = 0; i < 7; i++) {
-      final d = now.subtract(Duration(days: i));
-      final k = "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
-      final count = i == 0 ? today : (prefs.getInt('day_$k') ?? 0);
-      dayList.add({
-        'key': k,
-        'label': _formatDayName(d),
-        'dateStr': '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}',
-        'count': count,
-      });
-    }
-
     int loadedGoal = prefs.getInt('dailyGoal_v10') ?? 100;
     if (loadedGoal != 100 && loadedGoal != 300 && loadedGoal != 500 && loadedGoal != 1000 && loadedGoal != 10000) {
       loadedGoal = 100;
@@ -290,7 +276,20 @@ class _HamsMainScreenState extends State<HamsMainScreen> with WidgetsBindingObse
       _tasbihCount = prefs.getInt('tasbihCount_v10') ?? 0;
       _totalCount = total;
       _selectedIndices = parsedSet.isEmpty ? {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11} : parsedSet;
-      _last7DaysStats = dayList;
+
+      _last7DaysStats.clear();
+      final now = DateTime.now();
+      for (int i = 0; i < 7; i++) {
+        final d = now.subtract(Duration(days: i));
+        final k = "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
+        final count = i == 0 ? today : (prefs.getInt('day_$k') ?? 0);
+        _last7DaysStats.add({
+          'key': k,
+          'label': _formatDayName(d),
+          'dateStr': '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}',
+          'count': count,
+        });
+      }
     });
   }
 
