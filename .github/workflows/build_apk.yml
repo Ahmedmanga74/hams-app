@@ -1,4 +1,4 @@
-name: هَمْس | Hams APK & Play Store Bundle
+name: Hams | هَمْس Play Store & APK Release
 
 on:
   push:
@@ -23,13 +23,18 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 4. Setup Flutter
+      - name: 4. Install Pillow & Noto Arabic Font for Exact Splash Icon
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pil fonts-noto-core
+
+      - name: 5. Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.8'
           channel: 'stable'
 
-      - name: 5. Create Clean Flutter Project & Map All 12 MP3s
+      - name: 6. Create Clean Flutter Project & Map All 12 MP3s
         shell: python3 {0}
         run: |
           import os, glob, shutil, subprocess
@@ -53,10 +58,11 @@ jobs:
                       src = mp3_files[(i - 1) % len(mp3_files)]
                       shutil.copy(src, target)
 
-      - name: 6. Generate Clean main.dart, Native Service & Exact Calligraphy Icon
+      - name: 7. Generate Clean main.dart, Native Service & Exact Splash Icon
         shell: python3 {0}
         run: |
-          import os, glob, shutil, struct, zlib, math
+          import os, glob, shutil
+          from PIL import Image, ImageDraw, ImageFont
 
           with open("pubspec.yaml", "w", encoding="utf-8") as f:
               f.write("name: hams\ndescription: Hams\npublish_to: 'none'\nversion: 1.0.0+1\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\ndependencies:\n  flutter:\n    sdk: flutter\n  shared_preferences: ^2.2.3\nflutter:\n  uses-material-design: true\n  assets:\n    - assets/audio/\n")
@@ -81,7 +87,7 @@ jobs:
               "  Widget build(BuildContext context) {",
               "    return MaterialApp(",
               "      debugShowCheckedModeBanner: false,",
-              "      title: 'هَمْس | Hams',",
+              "      title: '\\u200EHams | هَمْس',",
               "      theme: ThemeData(",
               "        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF065F46)),",
               "        scaffoldBackgroundColor: const Color(0xFFF4F7F5),",
@@ -151,7 +157,10 @@ jobs:
               "                child: const Text('ﷺ', style: TextStyle(fontSize: 54, color: Color(0xFFFBBF24))),",
               "              ),",
               "              const SizedBox(height: 22),",
-              "              const Text('هَمْس | Hams', style: TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.bold)),",
+              "              const Directionality(",
+              "                textDirection: TextDirection.ltr,",
+              "                child: Text('Hams | هَمْس', style: TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.bold)),",
+              "              ),",
               "              const SizedBox(height: 12),",
               "              Container(",
               "                margin: const EdgeInsets.symmetric(horizontal: 32),",
@@ -440,7 +449,10 @@ jobs:
               "                      child: const Text('ﷺ', style: TextStyle(color: Color(0xFFFBBF24), fontSize: 22)),",
               "                    ),",
               "                    const SizedBox(width: 10),",
-              "                    const Text('هَمْس | Hams', style: TextStyle(color: Color(0xFF064E3B), fontSize: 20, fontWeight: FontWeight.w900)),",
+              "                    const Directionality(",
+              "                      textDirection: TextDirection.ltr,",
+              "                      child: Text('Hams | هَمْس', style: TextStyle(color: Color(0xFF064E3B), fontSize: 20, fontWeight: FontWeight.w900)),",
+              "                    ),",
               "                  ],",
               "                ),",
               "                Container(",
@@ -956,7 +968,7 @@ jobs:
               "            children: [",
               "              Text('1. عدم جمع أو مشاركة البيانات الشخصية:', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),",
               "              SizedBox(height: 4),",
-              "              Text('صُمم تطبيق «هَمْس | Hams» ليكون صدقة جارية ورفيقاً روحانياً خالصاً؛ لذا فإن التطبيق لا يجمع، ولا يخزن في خوادم خارجية، ولا يشارك أي بيانات شخصية أو موقع جغرافي أو جهات اتصال مع أي طرف ثالث.', style: TextStyle(fontSize: 12.5, height: 1.6)),",
+              "              Text('صُمم تطبيق «Hams | هَمْس» ليكون صدقة جارية ورفيقاً روحانياً خالصاً؛ لذا فإن التطبيق لا يجمع، ولا يخزن في خوادم خارجية، ولا يشارك أي بيانات شخصية أو موقع جغرافي أو جهات اتصال مع أي طرف ثالث.', style: TextStyle(fontSize: 12.5, height: 1.6)),",
               "              SizedBox(height: 14),",
               "              Text('2. التخزين المحلي فقط (On-Device Storage):', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),",
               "              SizedBox(height: 4),",
@@ -979,160 +991,68 @@ jobs:
           ]
           open("lib/main.dart", "w", encoding="utf-8").write("\n".join(dart_lines))
 
-          # مصفوفة بكسلات مخطوطة (صلى الله عليه وسلم) بدقة 64x64 مدمجة ذاتياً بدون أي مكتبة خارجية
-          CALLIGRAPHY_HEX = (
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "00000000000000000000038000000000000000039c0000000000000000000000"
-              "0000000000000000000007c00000000000000007fe0000000000000000000000"
-              "0000000000000000000006c00000380000000006de0000000000000000000000"
-              "0000000000000000000006c000007c0000000003b80000000000000000000000"
-              "00000000000000000000038000007c0000700000000000000000000000000000"
-              "00000000000000000000000000007c0000f80000000000000000000000000000"
-              "00000000000000000000000000007c0000f80003800000000000000000000000"
-              "00000000000000000000000000007c0000f80007c00380000000000000000000"
-              "00000000000000000000000000007c0000f80007c007c0000000000000000000"
-              "00000000000000000000000000007c0000f80007c007c003c000000000000000"
-              "00000000000000000000000000007c0000f80007c007c007e000000000000000"
-              "00000000000000000000000000007c0000f80007c007c00fe000000000000000"
-              "00000000000000000000000000007c0380f80007c007c01ce000000000000000"
-              "00000000000000000000000000007c07c0f80007c007c038e000000000000000"
-              "0000000000000000000ff80000007c07c0f80007c007c030e000000000000000"
-              "0000000000000000003ffe0000007c07c0f80007c007c03fe000000000000000"
-              "000000000000000000781f0000007c07c0f80007c007c01fc000000000000000"
-              "000000000000000000f00f8000007c07c0f80007c01fc007c000000000000000"
-              "000000000000000000e00783ffffffff80f80007ffff80000000000000000000"
-              "000000000000000001ffffc7ffffffff80f80003ffff00000000000000000000"
-              "000000000000000000ffff878000007c00000000000000000000000000000000"
-              "00000000000000000000000f0000007c00000000000000000000000000000000"
-              "00000000000000000000000f003c007c00000000001e00000000000000000000"
-              "00000000000000000007fc0f807e00fc00000000003f00000000000000000000"
-              "0000000000000000001fff07f0ff81fc00070000007f80000000000000000000"
-              "0000000000000000003c0f83fffffffe000f800000e380000000000000000000"
-              "000000000000000000380780fdffffff000f800001c380000000000000000000"
-              "0000000000000000007c1f00007c007c000f803c01ff80000000000000000000"
-              "0000000000000000003ffe00007c007c000f807e00ff80000000000000000000"
-              "0000000000000000001ffc00007c007c000f80fe003f80000000000000000000"
-              "0000000000000003ffffffffffffffffffffffff000f80000000000000000000"
-              "0000000000000003ffffffffffffffffffffffff000f80000000000000000000"
-              "000000000000000000000000007c007c000f8000000000000000000000000000"
-              "000000000000000000000000007c007c000f8000000000000000000000000000"
-              "000000000000000003e00000007c007c000f8000000000000000000000000000"
-              "000000000000000007f00000007c03fc000f8000000000000000000000000000"
-              "00000000000000000e380000007c07fc000f80001f0000000000000000000000"
-              "00000000000000000c380700387c0e3c000f80003f8000000000000000000000"
-              "00000000000000000ff80f807c7c0c1c000f800073c000000000000000000000"
-              "000000000000000007f80f807c7c1c1c000f800061c000000000000000000000"
-              "000000000000000000380f807c7c1ffc000f80007fc000000000000000000000"
-              "000000000000000000380f807c7c0ffc000f80003fc000000000000000000000"
-              "000000000000000000700ffffffffffffffff00001c000000000000000000000"
-              "000000000000000001e007ffffffffffffffe000038000000000000000000000"
-              "000000000000000007c0000000000000000f80000f0000000000000000000000"
-              "00000000000000000f00000000000000000f80003e0000000000000000000000"
-              "00000000000000000000000000000000000f8000780000000000000000000000"
-              "00000000000000000000000000000000000f8000000000000000000000000000"
-              "00000000000000000000000000000000000f8000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
-              "0000000000000000000000000000000000000000000000000000000000000000"
+          font_paths = (
+              glob.glob("/usr/share/fonts/**/NotoSansArabic*Bold*.ttf", recursive=True) +
+              glob.glob("/usr/share/fonts/**/NotoNaskhArabic*Bold*.ttf", recursive=True) +
+              glob.glob("/usr/share/fonts/**/NotoSansArabic*.ttf", recursive=True) +
+              glob.glob("/usr/share/fonts/**/*.ttf", recursive=True)
           )
 
-          bitmap_rows = [int(CALLIGRAPHY_HEX[i*16:(i+1)*16], 16) for i in range(64)]
+          selected_font = None
+          for fp in font_paths:
+              try:
+                  test_fnt = ImageFont.truetype(fp, 100)
+                  selected_font = fp
+                  break
+              except Exception:
+                  pass
 
-          def is_calligraphy_pixel(nx, ny):
-              # nx, ny in [0.0, 1.0] -> map to 64x64 grid with bilinear smoothing
-              gx = nx * 63.0
-              gy = ny * 63.0
-              x0, y0 = int(gx), int(gy)
-              if x0 < 0 or x0 >= 64 or y0 < 0 or y0 >= 64:
-                  return False
-              return ((bitmap_rows[y0] >> (63 - x0)) & 1) == 1
+          def create_exact_splash_icon(filename, target_size):
+              canvas_sz = 1024
+              img = Image.new("RGBA", (canvas_sz, canvas_sz), (6, 78, 59, 255))
+              draw = ImageDraw.Draw(img)
 
-          def rounded_rect_dist(x, y, cx, cy, half_w, radius):
-              dx = max(abs(x - cx) - (half_w - radius), 0.0)
-              dy = max(abs(y - cy) - (half_w - radius), 0.0)
-              return math.sqrt(dx*dx + dy*dy) - radius
+              margin = int(canvas_sz * 0.045)
+              radius = int(canvas_sz * 0.25)
+              border_w = int(canvas_sz * 0.035)
 
-          def write_png(filename, width, height, raw_data):
-              def png_chunk(t, d):
-                  return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
-              ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
-              png = b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", ihdr) + png_chunk(b"IDAT", zlib.compress(bytes(raw_data), 9)) + png_chunk(b"IEND", b"")
+              draw.rounded_rectangle(
+                  [margin, margin, canvas_sz - margin, canvas_sz - margin],
+                  radius=radius,
+                  fill=(6, 78, 59, 255),
+                  outline=(245, 158, 11, 255),
+                  width=border_w
+              )
+
+              if selected_font:
+                  fnt = ImageFont.truetype(selected_font, int(canvas_sz * 0.54))
+                  bbox = draw.textbbox((0, 0), "ﷺ", font=fnt)
+                  tw = bbox[2] - bbox[0]
+                  th = bbox[3] - bbox[1]
+                  tx = (canvas_sz - tw) / 2.0 - bbox[0]
+                  ty = (canvas_sz - th) / 2.0 - bbox[1]
+                  draw.text((tx, ty), "ﷺ", font=fnt, fill=(251, 191, 36, 255))
+
+              out = img.resize((target_size, target_size), Image.Resampling.LANCZOS)
               os.makedirs(os.path.dirname(filename), exist_ok=True)
-              open(filename, "wb").write(png)
-
-          def create_calligraphy_icon(filename, size):
-              raw_data = bytearray()
-              cx, cy = size / 2.0, size / 2.0
-              outer_half = size * 0.445
-              inner_half = size * 0.395
-              outer_rad = size * 0.22
-              inner_rad = size * 0.18
-
-              for y in range(size):
-                  raw_data.append(0)
-                  for x in range(size):
-                      d_out = rounded_rect_dist(x, y, cx, cy, outer_half, outer_rad)
-                      d_in = rounded_rect_dist(x, y, cx, cy, inner_half, inner_rad)
-
-                      # خلفية الأيقونة الخضراء الداكنة (#064E3B)
-                      r, g, b, a = 6, 78, 59, 255
-
-                      # الإطار الذهبي الدائري الحواف (#D97706)
-                      if d_out <= 0.0 and d_in >= 0.0:
-                          r, g, b, a = 217, 119, 6, 255
-                      elif d_in < 0.0:
-                          nx = (x - (cx - size * 0.36)) / (size * 0.72)
-                          ny = (y - (cy - size * 0.36)) / (size * 0.72)
-                          if 0.0 <= nx <= 1.0 and 0.0 <= ny <= 1.0 and is_calligraphy_pixel(nx, ny):
-                              r, g, b, a = 245, 185, 35, 255
-
-                      raw_data.extend([r, g, b, a])
-
-              write_png(filename, size, size, raw_data)
+              out.save(filename, "PNG")
 
           res_base = "android/app/src/main/res"
           for folder, sz in [("mipmap-mdpi", 48), ("mipmap-hdpi", 72), ("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144), ("mipmap-xxxhdpi", 192)]:
-              create_calligraphy_icon(f"{res_base}/{folder}/ic_launcher.png", sz)
-              create_calligraphy_icon(f"{res_base}/{folder}/ic_launcher_round.png", sz)
+              create_exact_splash_icon(f"{res_base}/{folder}/ic_launcher.png", sz)
+              create_exact_splash_icon(f"{res_base}/{folder}/ic_launcher_round.png", sz)
           if os.path.exists(f"{res_base}/mipmap-anydpi-v26"):
               shutil.rmtree(f"{res_base}/mipmap-anydpi-v26")
 
-          # توليد أيقونة المتجر 512x512 والبانر الترويجي 1024x500 ببايثون القياسي فقط
           os.makedirs("google_play_assets", exist_ok=True)
-          create_calligraphy_icon("google_play_assets/app_icon_512.png", 512)
+          create_exact_splash_icon("google_play_assets/app_icon_512.png", 512)
 
-          banner_data = bytearray()
-          for y in range(500):
-              banner_data.append(0)
-              for x in range(1024):
-                  r, g, b, a = 6, 78, 59, 255
-                  if 16 <= x <= 1008 and 16 <= y <= 484:
-                      if x < 24 or x > 1000 or y < 24 or y > 476:
-                          r, g, b, a = 217, 119, 6, 255
-                      else:
-                          dx, dy = x - 512.0, y - 250.0
-                          d_out = rounded_rect_dist(x, y, 512.0, 250.0, 140.0, 65.0)
-                          d_in = rounded_rect_dist(x, y, 512.0, 250.0, 124.0, 52.0)
-                          if d_out <= 0.0 and d_in >= 0.0:
-                              r, g, b, a = 217, 119, 6, 255
-                          elif d_in < 0.0:
-                              nx = (x - (512.0 - 110.0)) / 220.0
-                              ny = (y - (250.0 - 110.0)) / 220.0
-                              if 0.0 <= nx <= 1.0 and 0.0 <= ny <= 1.0 and is_calligraphy_pixel(nx, ny):
-                                  r, g, b, a = 245, 185, 35, 255
-                  banner_data.extend([r, g, b, a])
-          write_png("google_play_assets/feature_graphic_1024x500.png", 1024, 500, banner_data)
+          banner = Image.new("RGBA", (1024, 500), (6, 78, 59, 255))
+          bdraw = ImageDraw.Draw(banner)
+          bdraw.rounded_rectangle([16, 16, 1008, 484], radius=36, fill=(6, 95, 70, 255), outline=(245, 158, 11, 255), width=6)
+          icon_center = Image.open("google_play_assets/app_icon_512.png").resize((260, 260), Image.Resampling.LANCZOS)
+          banner.paste(icon_center, (382, 120), icon_center)
+          banner.convert("RGB").save("google_play_assets/feature_graphic_1024x500.png", "PNG")
 
           manifest_lines = [
               '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
@@ -1146,7 +1066,7 @@ jobs:
               '    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />',
               '    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />',
               '    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />',
-              '    <application android:label="هَمْس | Hams" android:name="${applicationName}" android:icon="@mipmap/ic_launcher">',
+              '    <application android:label="&#x200E;Hams | هَمْس" android:name="${applicationName}" android:icon="@mipmap/ic_launcher">',
               '        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop" android:theme="@style/LaunchTheme" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" android:hardwareAccelerated="true" android:windowSoftInputMode="adjustResize">',
               '            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />',
               '            <intent-filter>',
@@ -1222,7 +1142,7 @@ jobs:
               '                sharedMediaPlayer?.stop(); sharedMediaPlayer?.release(); sharedMediaPlayer = null',
               '                clearNotifRunnable?.let { mainHandler.removeCallbacks(it) }',
               '                if (showNotif) {',
-              '                    showTransientAlertNotif(appCtx, "هَمْس | Hams 🕌", "« " + formulas[idx] + " »")',
+              '                    showTransientAlertNotif(appCtx, "\\u200EHams | هَمْس 🕌", "« " + formulas[idx] + " »")',
               '                }',
               '                val loader = FlutterInjector.instance().flutterLoader()',
               '                loader.startInitialization(appCtx)',
@@ -1386,7 +1306,7 @@ jobs:
               '            m.createNotificationChannel(ch)',
               '        }',
               '        val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)',
-              '        return NotificationCompat.Builder(this, cid).setSmallIcon(applicationInfo.icon).setContentTitle("هَمْس | Hams").setContentText(txt).setContentIntent(pi).setOngoing(true).setPriority(NotificationCompat.PRIORITY_MIN).build()',
+              '        return NotificationCompat.Builder(this, cid).setSmallIcon(applicationInfo.icon).setContentTitle("\\u200EHams | هَمْس").setContentText(txt).setContentIntent(pi).setOngoing(true).setPriority(NotificationCompat.PRIORITY_MIN).build()',
               '    }',
               '    override fun onDestroy() {',
               '        if (screenReceiver != null) { try { unregisterReceiver(screenReceiver) } catch (_: Exception) {} }',
@@ -1447,7 +1367,7 @@ jobs:
               '                    result.success(true)',
               '                }',
               '                "showNotification" -> {',
-              '                    HamsForegroundService.showTransientAlertNotif(this, call.argument<String>("title") ?: "هَمْس", call.argument<String>("body") ?: "")',
+              '                    HamsForegroundService.showTransientAlertNotif(this, call.argument<String>("title") ?: "\\u200EHams | هَمْس", call.argument<String>("body") ?: "")',
               '                    result.success(true)',
               '                }',
               '                else -> result.notImplemented()',
@@ -1463,18 +1383,32 @@ jobs:
               '}'
           ]
           open(main_kt_path, "w", encoding="utf-8").write("\n".join(main_lines))
-          print("All Dart, Kotlin, and Zero-Dependency Calligraphy Icons generated cleanly!")
+          print("All Dart, Kotlin, and Exact Splash Icons generated cleanly!")
 
-      - name: 7. Compile Release APK & Signed Play Store AAB
+      - name: 8. Compile & Sign Release APK + Play Store AAB with Persistent Key
         run: |
+          # إنشاء مفتاح توقيع موحد وثابت إذا لم يكن مرفوعاً في المستودع، ليقبل الأندرويد تحديث الـ APK فوق القديم دائماً
+          mkdir -p ~/.android
+          if [ -f "hams_release.keystore" ]; then
+            cp hams_release.keystore google_play_assets/hams_release.keystore
+          else
+            keytool -genkey -v -keystore google_play_assets/hams_release.keystore \
+              -alias hams_key -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "hams_store_2026" -keypass "hams_store_2026" \
+              -dname "CN=Hams App, OU=Hams, O=Hams, L=Cairo, S=Cairo, C=EG"
+          fi
+
+          # جعل Flutter يستخدم نفس المفتاح لبناء الـ APK والـ AAB
+          rm -f ~/.android/debug.keystore
+          keytool -importkeystore -srckeystore google_play_assets/hams_release.keystore \
+            -destkeystore ~/.android/debug.keystore \
+            -srcstorepass "hams_store_2026" -deststorepass "android" \
+            -srcalias hams_key -destalias androiddebugkey \
+            -srckeypass "hams_store_2026" -destkeypass "android" -noprompt
+
           flutter pub get
           flutter build apk --release --no-tree-shake-icons
           flutter build appbundle --release --no-tree-shake-icons
-
-          keytool -genkey -v -keystore google_play_assets/hams_release.keystore \
-            -alias hams_key -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass "hams_store_2026" -keypass "hams_store_2026" \
-            -dname "CN=Hams App, OU=Hams, O=Hams, L=Cairo, S=Cairo, C=EG"
 
           jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
             -keystore google_play_assets/hams_release.keystore \
@@ -1482,7 +1416,8 @@ jobs:
             build/app/outputs/bundle/release/app-release.aab hams_key
 
           cat << 'EOF' > google_play_assets/README_KEYSTORE.txt
-          بيانات مفتاح التوقيع الرسمي لمتجر Google Play (احتفظ بهذا الملف مع ملف hams_release.keystore):
+          بيانات مفتاح التوقيع الرسمي لمتجر Google Play وتحديثات الـ APK المباشرة:
+          ملاحظة مهمة: ارفع ملف hams_release.keystore إلى الصفحة الرئيسية لمستودعك على GitHub لكي يوقع به أي تحديث مستقبلي تلقائياً!
           Keystore file: hams_release.keystore
           Key Alias: hams_key
           Store Password: hams_store_2026
@@ -1493,7 +1428,7 @@ jobs:
           cp build/app/outputs/bundle/release/app-release.aab google_play_assets/hams-release.aab
           ls -lh google_play_assets/
 
-      - name: 8. Upload Hams APK & Google Play Package
+      - name: 9. Upload Hams APK & Google Play Package
         uses: actions/upload-artifact@v4
         with:
           name: Hams-APK
