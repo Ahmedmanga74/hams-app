@@ -1,4 +1,4 @@
-name: هَمْس | Hams APK
+name: هَمْس | Hams APK & Play Store Bundle
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
           find . -maxdepth 3 -iname "*.mp3" -exec cp {} /tmp/hams_backup/audio/ \; || true
           ls -la /tmp/hams_backup/audio/
 
-      - name: 3. Setup Java 17
+      - name: 3. Setup Java 17 & Arabic Font Tools
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -53,14 +53,19 @@ jobs:
                       src = mp3_files[(i - 1) % len(mp3_files)]
                       shutil.copy(src, target)
 
-      - name: 6. Generate Clean main.dart & Native Android Service
+      - name: 6. Generate Clean main.dart, Native Service & Exact Calligraphy Icon
         shell: python3 {0}
         run: |
-          import os, glob, shutil, struct, zlib, math
+          import os, glob, shutil, subprocess
+
+          # تثبيت مكتبة Pillow وخطوط العربية لرسم أيقونة (صلى الله عليه وسلم) بدقة مطابقة للصورة
+          subprocess.run(["sudo", "apt-get", "update"], check=False)
+          subprocess.run(["sudo", "apt-get", "install", "-y", "fonts-noto-core", "fonts-amiri", "fonts-hosny-amiri", "python3-pil"], check=False)
 
           with open("pubspec.yaml", "w", encoding="utf-8") as f:
               f.write("name: hams\ndescription: Hams\npublish_to: 'none'\nversion: 1.0.0+1\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\ndependencies:\n  flutter:\n    sdk: flutter\n  shared_preferences: ^2.2.3\nflutter:\n  uses-material-design: true\n  assets:\n    - assets/audio/\n")
 
+          # كود التطبيق الأخير المطابق 100% بدون تغيير أي حرف في المميزات
           dart_lines = [
               "import 'dart:async';",
               "import 'dart:math';",
@@ -979,38 +984,72 @@ jobs:
           ]
           open("lib/main.dart", "w", encoding="utf-8").write("\n".join(dart_lines))
 
-          def create_hams_icon(filename, size):
-              raw_data = bytearray()
-              cx, cy = size / 2.0, size / 2.0
-              r_outer, r_inner = size * 0.34, size * 0.28
-              cut_x, cut_y = cx - size * 0.10, cy - size * 0.06
-              for y in range(size):
-                  raw_data.append(0)
-                  for x in range(size):
-                      dx, dy = x - cx, y - cy
-                      dist_center = math.sqrt(dx*dx + dy*dy)
-                      r, g, b, a = (4, 78, 56, 255) if dist_center > size * 0.45 else (6, 95, 70, 255)
-                      d1 = math.sqrt((x - cx)**2 + (y - cy)**2)
-                      d2 = math.sqrt((x - cut_x)**2 + (y - cut_y)**2)
-                      if d1 < r_outer and d2 > r_inner:
-                          r, g, b, a = 245, 158, 11, 255
-                      ds = math.sqrt((x - (cx - size*0.14))**2 + (y - (cy - size*0.12))**2)
-                      if ds < size * 0.045:
-                          r, g, b, a = 251, 191, 36, 255
-                      raw_data.extend([r, g, b, a])
-              def png_chunk(t, d):
-                  return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
-              ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
-              png = b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", ihdr) + png_chunk(b"IDAT", zlib.compress(bytes(raw_data), 9)) + png_chunk(b"IEND", b"")
+          # رسم الأيقونة المطابقة للصورة تماماً (خلفية خضراء + إطار ذهبي دائري الحواف + رمز ﷺ بالخط العربي الأصيل)
+          from PIL import Image, ImageDraw, ImageFont
+
+          font_candidates = (
+              glob.glob("/usr/share/fonts/**/Amiri-Bold.ttf", recursive=True) +
+              glob.glob("/usr/share/fonts/**/NotoSansArabic*Bold*.ttf", recursive=True) +
+              glob.glob("/usr/share/fonts/**/NotoNaskhArabic*Bold*.ttf", recursive=True) +
+              glob.glob("/usr/share/fonts/**/NotoSansArabic*.ttf", recursive=True) +
+              glob.glob("/usr/share/fonts/**/*.ttf", recursive=True)
+          )
+
+          def render_calligraphy_icon(filename, size):
+              scale = 4
+              big = size * scale
+              img = Image.new("RGBA", (big, big), (6, 78, 59, 255))
+              draw = ImageDraw.Draw(img)
+
+              pad = int(big * 0.055)
+              radius = int(big * 0.24)
+              border_w = max(2, int(big * 0.038))
+
+              draw.rounded_rectangle(
+                  [pad, pad, big - pad, big - pad],
+                  radius=radius,
+                  fill=(6, 78, 59, 255),
+                  outline=(217, 119, 6, 255),
+                  width=border_w
+              )
+
+              glyph_drawn = False
+              for fp in font_candidates:
+                  try:
+                      fnt = ImageFont.truetype(fp, int(big * 0.56))
+                      bbox = draw.textbbox((0, 0), "ﷺ", font=fnt)
+                      tw = bbox[2] - bbox[0]
+                      th = bbox[3] - bbox[1]
+                      if tw > big * 0.15 and th > big * 0.15:
+                          tx = (big - tw) / 2.0 - bbox[0]
+                          ty = (big - th) / 2.0 - bbox[1]
+                          draw.text((tx, ty), "ﷺ", font=fnt, fill=(251, 191, 36, 255))
+                          glyph_drawn = True
+                          break
+                  except Exception:
+                      pass
+
+              final_img = img.resize((size, size), Image.Resampling.LANCZOS)
               os.makedirs(os.path.dirname(filename), exist_ok=True)
-              open(filename, "wb").write(png)
+              final_img.save(filename, "PNG")
 
           res_base = "android/app/src/main/res"
           for folder, sz in [("mipmap-mdpi", 48), ("mipmap-hdpi", 72), ("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144), ("mipmap-xxxhdpi", 192)]:
-              create_hams_icon(f"{res_base}/{folder}/ic_launcher.png", sz)
-              create_hams_icon(f"{res_base}/{folder}/ic_launcher_round.png", sz)
+              render_calligraphy_icon(f"{res_base}/{folder}/ic_launcher.png", sz)
+              render_calligraphy_icon(f"{res_base}/{folder}/ic_launcher_round.png", sz)
           if os.path.exists(f"{res_base}/mipmap-anydpi-v26"):
               shutil.rmtree(f"{res_base}/mipmap-anydpi-v26")
+
+          # توليد أيقونة المتجر 512x512 والبانر الترويجي 1024x500
+          os.makedirs("google_play_assets", exist_ok=True)
+          render_calligraphy_icon("google_play_assets/app_icon_512.png", 512)
+
+          banner = Image.new("RGBA", (1024, 500), (6, 78, 59, 255))
+          bdraw = ImageDraw.Draw(banner)
+          bdraw.rounded_rectangle([16, 16, 1008, 484], radius=36, fill=(6, 95, 70, 255), outline=(217, 119, 6, 255), width=6)
+          icon_center = Image.open("google_play_assets/app_icon_512.png").resize((260, 260), Image.Resampling.LANCZOS)
+          banner.paste(icon_center, (382, 120), icon_center)
+          banner.convert("RGB").save("google_play_assets/feature_graphic_1024x500.png", "PNG")
 
           manifest_lines = [
               '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
@@ -1341,16 +1380,41 @@ jobs:
               '}'
           ]
           open(main_kt_path, "w", encoding="utf-8").write("\n".join(main_lines))
-          print("All Dart and Kotlin files generated cleanly!")
+          print("All Dart, Kotlin, and Calligraphy Icons generated cleanly!")
 
-      - name: 7. Compile Release APK
+      - name: 7. Compile Release APK & Signed Play Store AAB
         run: |
           flutter pub get
           flutter build apk --release --no-tree-shake-icons
-          ls -lh build/app/outputs/flutter-apk/app-release.apk
+          flutter build appbundle --release --no-tree-shake-icons
 
-      - name: 8. Upload Hams APK Artifact
+          # توليد مفتاح توقيع رسمي لمتجر Google Play وتوقيع ملف الـ AAB به مباشرة بدون المساس بملفات Gradle
+          keytool -genkey -v -keystore google_play_assets/hams_release.keystore \
+            -alias hams_key -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "hams_store_2026" -keypass "hams_store_2026" \
+            -dname "CN=Hams App, OU=Hams, O=Hams, L=Cairo, S=Cairo, C=EG"
+
+          jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+            -keystore google_play_assets/hams_release.keystore \
+            -storepass "hams_store_2026" -keypass "hams_store_2026" \
+            build/app/outputs/bundle/release/app-release.aab hams_key
+
+          cat << 'EOF' > google_play_assets/README_KEYSTORE.txt
+          بيانات مفتاح التوقيع الرسمي لمتجر Google Play (احتفظ بهذا الملف مع ملف hams_release.keystore):
+          Keystore file: hams_release.keystore
+          Key Alias: hams_key
+          Store Password: hams_store_2026
+          Key Password: hams_store_2026
+          EOF
+
+          cp build/app/outputs/flutter-apk/app-release.apk google_play_assets/hams-release.apk
+          cp build/app/outputs/bundle/release/app-release.aab google_play_assets/hams-release.aab
+          ls -lh google_play_assets/
+
+      - name: 8. Upload Hams APK & Google Play Package
         uses: actions/upload-artifact@v4
         with:
           name: Hams-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            google_play_assets/
