@@ -2113,32 +2113,60 @@ jobs:
 
       - name: 9. Compile & Sign Release APK + Play Store AAB with Persistent Key
         run: |
-          mkdir -p ~/.android
-          if [ -f "/tmp/hams_backup/hams_release.keystore" ]; then
-            cp /tmp/hams_backup/hams_release.keystore google_play_assets/hams_release.keystore
-            echo "Restored persistent hams_release.keystore from repository!"
-          else
-            keytool -genkey -v -keystore google_play_assets/hams_release.keystore \
+          mkdir -p /tmp/hams_backup google_play_assets
+          if [ ! -f "/tmp/hams_backup/hams_release.keystore" ]; then
+            keytool -genkey -v -keystore /tmp/hams_backup/hams_release.keystore \
               -alias hams_key -keyalg RSA -keysize 2048 -validity 10000 \
               -storepass "hams_store_2026" -keypass "hams_store_2026" \
               -dname "CN=Hams App, OU=Hams, O=Hams, L=Cairo, S=Cairo, C=EG"
           fi
+          cp /tmp/hams_backup/hams_release.keystore google_play_assets/hams_release.keystore
 
-          rm -f ~/.android/debug.keystore
-          keytool -importkeystore -srckeystore google_play_assets/hams_release.keystore \
-            -destkeystore ~/.android/debug.keystore \
-            -srcstorepass "hams_store_2026" -deststorepass "android" \
-            -srcalias hams_key -destalias androiddebugkey \
-            -srckeypass "hams_store_2026" -destkeypass "android" -noprompt
+          python3 - << 'PYEOF'
+          import os
+
+          kts_path = "android/app/build.gradle.kts"
+          groovy_path = "android/app/build.gradle"
+
+          if os.path.exists(kts_path):
+              txt = open(kts_path, "r", encoding="utf-8").read()
+              signing_block = '''signingConfigs {
+                  create("release") {
+                      storeFile = file("/tmp/hams_backup/hams_release.keystore")
+                      storePassword = "hams_store_2026"
+                      keyAlias = "hams_key"
+                      keyPassword = "hams_store_2026"
+                  }
+              }
+              '''
+              txt = txt.replace("buildTypes {", signing_block + "buildTypes {", 1)
+              txt = txt.replace('signingConfig = signingConfigs.getByName("debug")', 'signingConfig = signingConfigs.getByName("release")')
+              open(kts_path, "w", encoding="utf-8").write(txt)
+              print("Configured release signing in build.gradle.kts")
+          elif os.path.exists(groovy_path):
+              txt = open(groovy_path, "r", encoding="utf-8").read()
+              signing_block = '''signingConfigs {
+                  release {
+                      storeFile file("/tmp/hams_backup/hams_release.keystore")
+                      storePassword "hams_store_2026"
+                      keyAlias "hams_key"
+                      keyPassword "hams_store_2026"
+                  }
+              }
+              '''
+              txt = txt.replace("buildTypes {", signing_block + "buildTypes {", 1)
+              txt = txt.replace("signingConfig = signingConfigs.debug", "signingConfig = signingConfigs.release")
+              txt = txt.replace("signingConfig signingConfigs.debug", "signingConfig signingConfigs.release")
+              open(groovy_path, "w", encoding="utf-8").write(txt)
+              print("Configured release signing in build.gradle")
+          PYEOF
 
           flutter pub get
           flutter build apk --release --no-tree-shake-icons
           flutter build appbundle --release --no-tree-shake-icons
 
-          jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-            -keystore google_play_assets/hams_release.keystore \
-            -storepass "hams_store_2026" -keypass "hams_store_2026" \
-            build/app/outputs/bundle/release/app-release.aab hams_key
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name "apksigner" | sort -V | tail -n 1)
+          "$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | head -n 5
 
           cp build/app/outputs/flutter-apk/app-release.apk google_play_assets/hams-release.apk
           cp build/app/outputs/bundle/release/app-release.aab google_play_assets/hams-release.aab
