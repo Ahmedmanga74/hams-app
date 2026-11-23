@@ -11,10 +11,13 @@ jobs:
       - name: 1. Checkout Repository Files
         uses: actions/checkout@v4
 
-      - name: 2. Backup Uploaded 12 MP3 Files
+      - name: 2. Backup MP3s, Keystore & Custom Adhkar
         run: |
           mkdir -p /tmp/hams_backup/audio
           find . -maxdepth 3 -iname "*.mp3" -exec cp {} /tmp/hams_backup/audio/ \; || true
+          if [ -f "hams_release.keystore" ]; then cp hams_release.keystore /tmp/hams_backup/hams_release.keystore; fi
+          if [ -f "adhkar.json" ]; then cp adhkar.json /tmp/hams_backup/adhkar.json; fi
+          ls -la /tmp/hams_backup/
           ls -la /tmp/hams_backup/audio/
 
       - name: 3. Setup Java 17
@@ -39,7 +42,7 @@ jobs:
         run: |
           import os, glob, shutil, subprocess
 
-          for item in ["android", "ios", "lib", "test", "pubspec.yaml", "pubspec.lock", ".metadata"]:
+          for item in ["android", "ios", "lib", "test", "pubspec.yaml", "pubspec.lock", ".metadata", "assets"]:
               if os.path.exists(item):
                   if os.path.isdir(item): shutil.rmtree(item)
                   else: os.remove(item)
@@ -58,17 +61,133 @@ jobs:
                       src = mp3_files[(i - 1) % len(mp3_files)]
                       shutil.copy(src, target)
 
-      - name: 7. Generate Clean main.dart, Native Service & Exact Splash Icon
+      - name: 7. Fetch & Build Offline Adhkar JSON (5 Categories)
+        shell: python3 {0}
+        run: |
+          import os, json, shutil, urllib.request
+
+          out_path = "assets/adhkar.json"
+          os.makedirs("assets", exist_ok=True)
+
+          if os.path.exists("/tmp/hams_backup/adhkar.json"):
+              shutil.copy("/tmp/hams_backup/adhkar.json", out_path)
+              print("Using custom adhkar.json from repository.")
+          else:
+              urls = [
+                  "https://raw.githubusercontent.com/rn0x/Adhkar-json/main/adhkar.json",
+                  "https://raw.githubusercontent.com/nawafalqari/azkar-api/56df51279ab6eb86dc2f6202c7de26c8948331c1/azkar.json"
+              ]
+              raw_data = None
+              for url in urls:
+                  try:
+                      req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                      with urllib.request.urlopen(req, timeout=25) as resp:
+                          raw_data = json.loads(resp.read().decode("utf-8-sig"))
+                          print(f"Fetched adhkar data from: {url}")
+                          break
+                  except Exception as e:
+                      print(f"Source skipped ({url}): {e}")
+
+              buckets = {
+                  "morning": {"id": "morning", "title": "أذكار الصباح", "icon": "wb_sunny", "items": []},
+                  "evening": {"id": "evening", "title": "أذكار المساء", "icon": "nights_stay", "items": []},
+                  "prayer": {"id": "prayer", "title": "أذكار الصلاة", "icon": "mosque", "items": []},
+                  "sleep": {"id": "sleep", "title": "أذكار النوم", "icon": "bedtime", "items": []},
+                  "selected": {"id": "selected", "title": "أذكار مختارة", "icon": "auto_awesome", "items": []},
+              }
+
+              def clean_count(val):
+                  try:
+                      c = int(str(val).strip())
+                      return c if c > 0 else 1
+                  except Exception:
+                      return 1
+
+              def add_item(bucket_key, text, count, note=""):
+                  t = str(text or "").strip()
+                  if not t:
+                      return
+                  buckets[bucket_key]["items"].append({
+                      "text": t,
+                      "count": clean_count(count),
+                      "note": str(note or "").strip()
+                  })
+
+              if isinstance(raw_data, list):
+                  for entry in raw_data:
+                      if not isinstance(entry, dict):
+                          continue
+                      cat = str(entry.get("category", ""))
+                      arr = entry.get("array", [])
+                      if not isinstance(arr, list):
+                          continue
+                      for item in arr:
+                          if not isinstance(item, dict):
+                              continue
+                          txt = item.get("text") or item.get("content") or ""
+                          cnt = item.get("count", 1)
+                          note = item.get("description") or item.get("note") or ""
+                          if "الصباح" in cat and "المساء" in cat:
+                              add_item("morning", txt, cnt, note)
+                              add_item("evening", txt, cnt, note)
+                          elif "الصباح" in cat:
+                              add_item("morning", txt, cnt, note)
+                          elif "المساء" in cat:
+                              add_item("evening", txt, cnt, note)
+                          elif "الصلاة" in cat or "السلام من الصلاة" in cat:
+                              add_item("prayer", txt, cnt, note)
+                          elif "النوم" in cat:
+                              add_item("sleep", txt, cnt, note)
+                          elif len(buckets["selected"]["items"]) < 35:
+                              add_item("selected", txt, cnt, cat)
+              elif isinstance(raw_data, dict):
+                  for cat, arr in raw_data.items():
+                      if not isinstance(arr, list):
+                          continue
+                      for item in arr:
+                          if not isinstance(item, dict):
+                              continue
+                          txt = item.get("content") or item.get("text") or ""
+                          cnt = item.get("count", 1)
+                          note = item.get("description") or item.get("note") or ""
+                          if "الصباح" in cat:
+                              add_item("morning", txt, cnt, note)
+                          elif "المساء" in cat:
+                              add_item("evening", txt, cnt, note)
+                          elif "الصلاة" in cat:
+                              add_item("prayer", txt, cnt, note)
+                          elif "النوم" in cat:
+                              add_item("sleep", txt, cnt, note)
+                          elif len(buckets["selected"]["items"]) < 35:
+                              add_item("selected", txt, cnt, note or cat)
+
+              final_payload = {
+                  "categories": [
+                      buckets["morning"],
+                      buckets["evening"],
+                      buckets["prayer"],
+                      buckets["sleep"],
+                      buckets["selected"]
+                  ]
+              }
+              with open(out_path, "w", encoding="utf-8") as f:
+                  json.dump(final_payload, f, ensure_ascii=False, indent=2)
+
+              for k, v in buckets.items():
+                  print(f"Category [{k}] ({v['title']}): {len(v['items'])} items")
+
+      - name: 8. Generate Clean main.dart, Native Service & Exact Splash Icon
         shell: python3 {0}
         run: |
           import os, glob, shutil
           from PIL import Image, ImageDraw, ImageFont
 
           with open("pubspec.yaml", "w", encoding="utf-8") as f:
-              f.write("name: hams\ndescription: Hams\npublish_to: 'none'\nversion: 1.0.0+1\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\ndependencies:\n  flutter:\n    sdk: flutter\n  shared_preferences: ^2.2.3\nflutter:\n  uses-material-design: true\n  assets:\n    - assets/audio/\n")
+              f.write("name: hams\ndescription: Hams\npublish_to: 'none'\nversion: 1.1.0+2\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\ndependencies:\n  flutter:\n    sdk: flutter\n  shared_preferences: ^2.2.3\nflutter:\n  uses-material-design: true\n  assets:\n    - assets/audio/\n    - assets/adhkar.json\n")
 
           dart_lines = [
               "import 'dart:async';",
+              "import 'dart:convert';",
               "import 'dart:math';",
               "import 'package:flutter/material.dart';",
               "import 'package:flutter/services.dart';",
@@ -208,6 +327,7 @@ jobs:
               "  bool _permNotif = false;",
               "  bool _permBattery = false;",
               "  bool _permOverlay = false;",
+              "  List> _adhkarCategories = [];",
               "",
               "  final List<String> _adhkarList = [",
               "    'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ عَبْدِكَ وَرَسُولِكَ',",
@@ -239,8 +359,25 @@ jobs:
               "",
               "  Future<void> _initApp() async {",
               "    await _loadData();",
+              "    await _loadAdhkarAsset();",
               "    await _saveData();",
               "    await _requestInitialNotif();",
+              "  }",
+              "",
+              "  Future<void> _loadAdhkarAsset() async {",
+              "    try {",
+              "      final raw = await rootBundle.loadString('assets/adhkar.json');",
+              "      final decoded = jsonDecode(raw);",
+              "      if (decoded is Map && decoded['categories'] is List && mounted) {",
+              "        final loaded = >[];",
+              "        for (final entry in decoded['categories']) {",
+              "          if (entry is Map) {",
+              "            loaded.add(Map<String, dynamic>.from(entry));",
+              "          }",
+              "        }",
+              "        setState(() => _adhkarCategories = loaded);",
+              "      }",
+              "    } catch (_) {}",
               "  }",
               "",
               "  @override",
@@ -419,6 +556,16 @@ jobs:
               "    await _playRealMp3Dhikr(chosenIndex);",
               "  }",
               "",
+              "  IconData _iconForCategory(String iconName) {",
+              "    switch (iconName) {",
+              "      case 'wb_sunny': return Icons.wb_sunny_rounded;",
+              "      case 'nights_stay': return Icons.nights_stay_rounded;",
+              "      case 'mosque': return Icons.mosque_rounded;",
+              "      case 'bedtime': return Icons.bedtime_rounded;",
+              "      default: return Icons.auto_awesome_rounded;",
+              "    }",
+              "  }",
+              "",
               "  @override",
               "  void dispose() {",
               "    WidgetsBinding.instance.removeObserver(this);",
@@ -427,7 +574,7 @@ jobs:
               "",
               "  @override",
               "  Widget build(BuildContext context) {",
-              "    final pages = [_buildHomeTab(), _buildTasbihTab(), _buildStatsTab(), _buildSettingsTab(), _buildPrivacyTab()];",
+              "    final pages = [_buildHomeTab(), _buildTasbihTab(), _buildAdhkarTab(), _buildStatsTab(), _buildSettingsTab()];",
               "    return Scaffold(",
               "      backgroundColor: const Color(0xFFF4F7F5),",
               "      appBar: PreferredSize(",
@@ -474,9 +621,9 @@ jobs:
               "        destinations: const [",
               "          NavigationDestination(icon: Icon(Icons.notifications_active_outlined), selectedIcon: Icon(Icons.notifications_active, color: Color(0xFF065F46)), label: 'الرئيسية'),",
               "          NavigationDestination(icon: Icon(Icons.radio_button_checked), selectedIcon: Icon(Icons.touch_app, color: Color(0xFF065F46)), label: 'المسبحة'),",
+              "          NavigationDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book, color: Color(0xFF065F46)), label: 'الأذكار'),",
               "          NavigationDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart, color: Color(0xFF065F46)), label: 'الإحصائيات'),",
               "          NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings, color: Color(0xFF065F46)), label: 'الإعدادات'),",
-              "          NavigationDestination(icon: Icon(Icons.shield_outlined), selectedIcon: Icon(Icons.shield, color: Color(0xFF065F46)), label: 'الخصوصية'),",
               "        ],",
               "      ),",
               "    );",
@@ -694,6 +841,71 @@ jobs:
               "            ],",
               "          ),",
               "        ),",
+              "      ],",
+              "    );",
+              "  }",
+              "",
+              "  Widget _buildAdhkarTab() {",
+              "    return ListView(",
+              "      padding: const EdgeInsets.all(14),",
+              "      children: [",
+              "        Container(",
+              "          padding: const EdgeInsets.all(18),",
+              "          decoration: BoxDecoration(",
+              "            gradient: const LinearGradient(colors: [Color(0xFF064E3B), Color(0xFF047857)], begin: Alignment.topRight, end: Alignment.bottomLeft),",
+              "            borderRadius: BorderRadius.circular(22),",
+              "          ),",
+              "          child: const Column(",
+              "            crossAxisAlignment: CrossAxisAlignment.start,",
+              "            children: [",
+              "              Text('📖 الأذكار اليومية', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),",
+              "              SizedBox(height: 6),",
+              "              Text('أذكار الصباح والمساء والصلاة والنوم وأذكار مختارة، تعمل بالكامل بدون إنترنت مع عداد تفاعلي لكل ذكر.', style: TextStyle(color: Color(0xFFD1FAE5), fontSize: 12.5, height: 1.5)),",
+              "            ],",
+              "          ),",
+              "        ),",
+              "        const SizedBox(height: 14),",
+              "        if (_adhkarCategories.isEmpty)",
+              "          const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator(color: Color(0xFF065F46))))",
+              "        else",
+              "          ..._adhkarCategories.map((cat) {",
+              "            final title = cat['title']?.toString() ?? 'أذكار';",
+              "            final iconName = cat['icon']?.toString() ?? 'auto_awesome';",
+              "            final rawItems = (cat['items'] is List) ? (cat['items'] as List) : [];",
+              "            final items = rawItems.whereType().map((e) => Map<String, dynamic>.from(e)).toList();",
+              "            return Container(",
+              "              margin: const EdgeInsets.only(bottom: 12),",
+              "              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE5E7EB))),",
+              "              child: ListTile(",
+              "                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),",
+              "                leading: Container(",
+              "                  width: 48, height: 48,",
+              "                  decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFA7F3D0))),",
+              "                  child: Icon(_iconForCategory(iconName), color: const Color(0xFF065F46), size: 26),",
+              "                ),",
+              "                title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15.5, color: Color(0xFF064E3B))),",
+              "                subtitle: Padding(",
+              "                  padding: const EdgeInsets.only(top: 4),",
+              "                  child: Text('${items.length} ذكراً جاهزاً للقراءة بدون إنترنت', style: const TextStyle(fontSize: 12, color: Colors.grey)),",
+              "                ),",
+              "                trailing: Container(",
+              "                  padding: const EdgeInsets.all(8),",
+              "                  decoration: BoxDecoration(color: const Color(0xFFF3F4F6), borderRadius: BorderRadius.circular(10)),",
+              "                  child: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Color(0xFF065F46)),",
+              "                ),",
+              "                onTap: () {",
+              "                  Navigator.of(context).push(",
+              "                    MaterialPageRoute(",
+              "                      builder: (_) => Directionality(",
+              "                        textDirection: TextDirection.rtl,",
+              "                        child: HamsAdhkarDetailScreen(title: title, items: items),",
+              "                      ),",
+              "                    ),",
+              "                  );",
+              "                },",
+              "              ),",
+              "            );",
+              "          }),",
               "      ],",
               "    );",
               "  }",
@@ -952,39 +1164,222 @@ jobs:
               "            ],",
               "          ),",
               "        ),",
-              "      ],",
-              "    );",
-              "  }",
-              "",
-              "  Widget _buildPrivacyTab() {",
-              "    return ListView(",
-              "      padding: const EdgeInsets.all(14),",
-              "      children: [",
+              "        const SizedBox(height: 14),",
               "        Container(",
-              "          padding: const EdgeInsets.all(18),",
               "          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),",
-              "          child: const Column(",
-              "            crossAxisAlignment: CrossAxisAlignment.start,",
-              "            children: [",
-              "              Text('1. عدم جمع أو مشاركة البيانات الشخصية:', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),",
-              "              SizedBox(height: 4),",
-              "              Text('صُمم تطبيق «Hams | هَمْس» ليكون صدقة جارية ورفيقاً روحانياً خالصاً؛ لذا فإن التطبيق لا يجمع، ولا يخزن في خوادم خارجية، ولا يشارك أي بيانات شخصية أو موقع جغرافي أو جهات اتصال مع أي طرف ثالث.', style: TextStyle(fontSize: 12.5, height: 1.6)),",
-              "              SizedBox(height: 14),",
-              "              Text('2. التخزين المحلي فقط (On-Device Storage):', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),",
-              "              SizedBox(height: 4),",
-              "              Text('جميع إحصائيات صلواتك على النبي ﷺ، وعداد المسبحة، وتفضيلات الصوت ومعدل التكرار تُحفظ محلياً داخل ذاكرة هاتفك فقط (SharedPreferences)، ويمكنك تصفيرها أو حذفها في أي وقت.', style: TextStyle(fontSize: 12.5, height: 1.6)),",
-              "              SizedBox(height: 14),",
-              "              Text('3. الأذونات المطلوبة وسبب استخدامها:', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),",
-              "              SizedBox(height: 4),",
-              "              Text('• مستشعر حالة الشاشة (SCREEN_STATE): لتشغيل التذكير الصوتي بالصلاة على النبي ﷺ فور فتح قفل شاشة الهاتف فقط دون تسجيل أي نشاط.\\n• الخدمة الأمامية والإشعارات (FOREGROUND_SERVICE): لضمان استمرار عمل المؤقت الصوتي الدوري في الخلفية في الأوقات التي تحددها.\\n• العرض فوق التطبيقات الأخرى (SYSTEM_ALERT_WINDOW): لتمكين ظهور التنبيه التذكيري أثناء استخدام الهاتف.', style: TextStyle(fontSize: 12.5, height: 1.6)),",
-              "              SizedBox(height: 14),",
-              "              Text('4. العمل بدون إنترنت (100% Offline):', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),",
-              "              SizedBox(height: 4),",
-              "              Text('يعمل التطبيق وجميع ملفاته الصوتية البشرية (MP3) بالكامل بدون الحاجة إلى اتصال بالإنترنت، ولا يتضمن أي برمجيات تتبع إعلانية.', style: TextStyle(fontSize: 12.5, height: 1.6)),",
-              "            ],",
+              "          child: ListTile(",
+              "            leading: const Icon(Icons.shield_outlined, color: Color(0xFF065F46)),",
+              "            title: const Text('سياسة الخصوصية والأمان', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF064E3B))),",
+              "            subtitle: const Text('يعمل التطبيق 100% بدون إنترنت ولا يجمع أي بيانات', style: TextStyle(fontSize: 11.5, color: Colors.grey)),",
+              "            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Color(0xFF065F46)),",
+              "            onTap: () {",
+              "              Navigator.of(context).push(",
+              "                MaterialPageRoute(",
+              "                  builder: (_) => const Directionality(textDirection: TextDirection.rtl, child: HamsPrivacyScreen()),",
+              "                ),",
+              "              );",
+              "            },",
               "          ),",
               "        ),",
               "      ],",
+              "    );",
+              "  }",
+              "}",
+              "",
+              "class HamsAdhkarDetailScreen extends StatefulWidget {",
+              "  final String title;",
+              "  final List> items;",
+              "  const HamsAdhkarDetailScreen({super.key, required this.title, required this.items});",
+              "  @override",
+              "  State<HamsAdhkarDetailScreen> createState() => _HamsAdhkarDetailScreenState();",
+              "}",
+              "",
+              "class _HamsAdhkarDetailScreenState extends State<HamsAdhkarDetailScreen> {",
+              "  late List<int> _remaining;",
+              "  double _fontSize = 18.0;",
+              "",
+              "  @override",
+              "  void initState() {",
+              "    super.initState();",
+              "    _resetAll(notify: false);",
+              "  }",
+              "",
+              "  void _resetAll({bool notify = true}) {",
+              "    final initList = widget.items.map((item) {",
+              "      final c = int.tryParse(item['count']?.toString() ?? '1') ?? 1;",
+              "      return c > 0 ? c : 1;",
+              "    }).toList();",
+              "    if (notify) {",
+              "      HapticFeedback.mediumImpact();",
+              "      setState(() => _remaining = initList);",
+              "    } else {",
+              "      _remaining = initList;",
+              "    }",
+              "  }",
+              "",
+              "  @override",
+              "  Widget build(BuildContext context) {",
+              "    final total = widget.items.length;",
+              "    final done = _remaining.where((r) => r == 0).length;",
+              "    final progress = total == 0 ? 0.0 : (done / total).clamp(0.0, 1.0);",
+              "    return Scaffold(",
+              "      backgroundColor: const Color(0xFFF4F7F5),",
+              "      appBar: AppBar(",
+              "        backgroundColor: const Color(0xFF064E3B),",
+              "        foregroundColor: Colors.white,",
+              "        title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),",
+              "        actions: [",
+              "          IconButton(",
+              "            tooltip: 'تصغير الخط',",
+              "            icon: const Icon(Icons.text_decrease_rounded),",
+              "            onPressed: () => setState(() => _fontSize = (_fontSize - 2).clamp(14.0, 28.0)),",
+              "          ),",
+              "          IconButton(",
+              "            tooltip: 'تكبير الخط',",
+              "            icon: const Icon(Icons.text_increase_rounded),",
+              "            onPressed: () => setState(() => _fontSize = (_fontSize + 2).clamp(14.0, 28.0)),",
+              "          ),",
+              "          IconButton(",
+              "            tooltip: 'إعادة العدادات',",
+              "            icon: const Icon(Icons.refresh_rounded),",
+              "            onPressed: () => _resetAll(),",
+              "          ),",
+              "        ],",
+              "      ),",
+              "      body: Column(",
+              "        children: [",
+              "          Container(",
+              "            color: Colors.white,",
+              "            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),",
+              "            child: Column(",
+              "              children: [",
+              "                Row(",
+              "                  mainAxisAlignment: MainAxisAlignment.spaceBetween,",
+              "                  children: [",
+              "                    const Text('نسبة الإنجاز', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF374151))),",
+              "                    Text('$done / $total', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5, color: Color(0xFF065F46))),",
+              "                  ],",
+              "                ),",
+              "                const SizedBox(height: 6),",
+              "                ClipRRect(",
+              "                  borderRadius: BorderRadius.circular(8),",
+              "                  child: LinearProgressIndicator(value: progress, minHeight: 8, backgroundColor: const Color(0xFFF3F4F6), valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF15803D))),",
+              "                ),",
+              "              ],",
+              "            ),",
+              "          ),",
+              "          Expanded(",
+              "            child: widget.items.isEmpty",
+              "                ? const Center(child: Text('لا توجد أذكار في هذا القسم حالياً', style: TextStyle(color: Colors.grey)))",
+              "                : ListView.builder(",
+              "                    padding: const EdgeInsets.all(14),",
+              "                    itemCount: widget.items.length,",
+              "                    itemBuilder: (ctx, i) {",
+              "                      final item = widget.items[i];",
+              "                      final text = item['text']?.toString() ?? '';",
+              "                      final note = item['note']?.toString() ?? '';",
+              "                      final target = int.tryParse(item['count']?.toString() ?? '1') ?? 1;",
+              "                      final rem = _remaining[i];",
+              "                      final isDone = rem == 0;",
+              "                      return GestureDetector(",
+              "                        onTap: () {",
+              "                          if (rem > 0) {",
+              "                            if (rem == 1) {",
+              "                              HapticFeedback.mediumImpact();",
+              "                            } else {",
+              "                              HapticFeedback.lightImpact();",
+              "                            }",
+              "                            setState(() => _remaining[i] = rem - 1);",
+              "                          }",
+              "                        },",
+              "                        child: AnimatedContainer(",
+              "                          duration: const Duration(milliseconds: 220),",
+              "                          margin: const EdgeInsets.only(bottom: 12),",
+              "                          padding: const EdgeInsets.all(16),",
+              "                          decoration: BoxDecoration(",
+              "                            color: isDone ? const Color(0xFFECFDF5) : Colors.white,",
+              "                            borderRadius: BorderRadius.circular(18),",
+              "                            border: Border.all(color: isDone ? const Color(0xFF10B981) : const Color(0xFFE5E7EB), width: isDone ? 1.6 : 1.0),",
+              "                          ),",
+              "                          child: Column(",
+              "                            crossAxisAlignment: CrossAxisAlignment.stretch,",
+              "                            children: [",
+              "                              Text(text, textAlign: TextAlign.justify, style: TextStyle(fontSize: _fontSize, height: 1.8, fontWeight: FontWeight.w600, color: isDone ? const Color(0xFF065F46) : const Color(0xFF111827))),",
+              "                              if (note.isNotEmpty) ...[",
+              "                                const SizedBox(height: 8),",
+              "                                Text(note, style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280), height: 1.4)),",
+              "                              ],",
+              "                              const SizedBox(height: 12),",
+              "                              Row(",
+              "                                mainAxisAlignment: MainAxisAlignment.spaceBetween,",
+              "                                children: [",
+              "                                  Text('التكرار المطلوب: $target', style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),",
+              "                                  Container(",
+              "                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),",
+              "                                    decoration: BoxDecoration(",
+              "                                      color: isDone ? const Color(0xFF15803D) : const Color(0xFF064E3B),",
+              "                                      borderRadius: BorderRadius.circular(20),",
+              "                                    ),",
+              "                                    child: Text(",
+              "                                      isDone ? '✓ تم بحمد الله' : 'المتبقي: $rem',",
+              "                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),",
+              "                                    ),",
+              "                                  ),",
+              "                                ],",
+              "                              ),",
+              "                            ],",
+              "                          ),",
+              "                        ),",
+              "                      );",
+              "                    },",
+              "                  ),",
+              "          ),",
+              "        ],",
+              "      ),",
+              "    );",
+              "  }",
+              "}",
+              "",
+              "class HamsPrivacyScreen extends StatelessWidget {",
+              "  const HamsPrivacyScreen({super.key});",
+              "  @override",
+              "  Widget build(BuildContext context) {",
+              "    return Scaffold(",
+              "      backgroundColor: const Color(0xFFF4F7F5),",
+              "      appBar: AppBar(",
+              "        backgroundColor: const Color(0xFF064E3B),",
+              "        foregroundColor: Colors.white,",
+              "        title: const Text('سياسة الخصوصية والأمان', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),",
+              "      ),",
+              "      body: ListView(",
+              "        padding: const EdgeInsets.all(14),",
+              "        children: [",
+              "          Container(",
+              "            padding: const EdgeInsets.all(18),",
+              "            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),",
+              "            child: const Column(",
+              "              crossAxisAlignment: CrossAxisAlignment.start,",
+              "              children: [",
+              "                Text('1. عدم جمع أو مشاركة البيانات الشخصية:', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),",
+              "                SizedBox(height: 4),",
+              "                Text('صُمم تطبيق «Hams | هَمْس» ليكون صدقة جارية ورفيقاً روحانياً خالصاً؛ لذا فإن التطبيق لا يجمع، ولا يخزن في خوادم خارجية، ولا يشارك أي بيانات شخصية أو موقع جغرافي أو جهات اتصال مع أي طرف ثالث.', style: TextStyle(fontSize: 12.5, height: 1.6)),",
+              "                SizedBox(height: 14),",
+              "                Text('2. التخزين المحلي فقط (On-Device Storage):', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),",
+              "                SizedBox(height: 4),",
+              "                Text('جميع إحصائيات صلواتك على النبي ﷺ، وعداد المسبحة، وتفضيلات الصوت ومعدل التكرار تُحفظ محلياً داخل ذاكرة هاتفك فقط (SharedPreferences)، ويمكنك تصفيرها أو حذفها في أي وقت.', style: TextStyle(fontSize: 12.5, height: 1.6)),",
+              "                SizedBox(height: 14),",
+              "                Text('3. الأذونات المطلوبة وسبب استخدامها:', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),",
+              "                SizedBox(height: 4),",
+              "                Text('• مستشعر حالة الشاشة (SCREEN_STATE): لتشغيل التذكير الصوتي بالصلاة على النبي ﷺ فور فتح قفل شاشة الهاتف فقط دون تسجيل أي نشاط.\\n• الخدمة الأمامية والإشعارات (FOREGROUND_SERVICE): لضمان استمرار عمل المؤقت الصوتي الدوري في الخلفية في الأوقات التي تحددها.\\n• العرض فوق التطبيقات الأخرى (SYSTEM_ALERT_WINDOW): لتمكين ظهور التنبيه التذكيري أثناء استخدام الهاتف.', style: TextStyle(fontSize: 12.5, height: 1.6)),",
+              "                SizedBox(height: 14),",
+              "                Text('4. العمل بدون إنترنت (100% Offline):', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF064E3B))),",
+              "                SizedBox(height: 4),",
+              "                Text('يعمل التطبيق وجميع ملفاته الصوتية البشرية (MP3) والأذكار بالكامل بدون الحاجة إلى اتصال بالإنترنت، ولا يتضمن أي برمجيات تتبع إعلانية.', style: TextStyle(fontSize: 12.5, height: 1.6)),",
+              "              ],",
+              "            ),",
+              "          ),",
+              "        ],",
+              "      ),",
               "    );",
               "  }",
               "}"
@@ -1383,14 +1778,14 @@ jobs:
               '}'
           ]
           open(main_kt_path, "w", encoding="utf-8").write("\n".join(main_lines))
-          print("All Dart, Kotlin, and Exact Splash Icons generated cleanly!")
+          print("All Dart, Kotlin, Adhkar UI, and Exact Splash Icons generated cleanly!")
 
-      - name: 8. Compile & Sign Release APK + Play Store AAB with Persistent Key
+      - name: 9. Compile & Sign Release APK + Play Store AAB with Persistent Key
         run: |
-          # إنشاء مفتاح توقيع موحد وثابت إذا لم يكن مرفوعاً في المستودع، ليقبل الأندرويد تحديث الـ APK فوق القديم دائماً
           mkdir -p ~/.android
-          if [ -f "hams_release.keystore" ]; then
-            cp hams_release.keystore google_play_assets/hams_release.keystore
+          if [ -f "/tmp/hams_backup/hams_release.keystore" ]; then
+            cp /tmp/hams_backup/hams_release.keystore google_play_assets/hams_release.keystore
+            echo "Restored persistent hams_release.keystore from repository!"
           else
             keytool -genkey -v -keystore google_play_assets/hams_release.keystore \
               -alias hams_key -keyalg RSA -keysize 2048 -validity 10000 \
@@ -1398,7 +1793,6 @@ jobs:
               -dname "CN=Hams App, OU=Hams, O=Hams, L=Cairo, S=Cairo, C=EG"
           fi
 
-          # جعل Flutter يستخدم نفس المفتاح لبناء الـ APK والـ AAB
           rm -f ~/.android/debug.keystore
           keytool -importkeystore -srckeystore google_play_assets/hams_release.keystore \
             -destkeystore ~/.android/debug.keystore \
@@ -1415,20 +1809,11 @@ jobs:
             -storepass "hams_store_2026" -keypass "hams_store_2026" \
             build/app/outputs/bundle/release/app-release.aab hams_key
 
-          cat << 'EOF' > google_play_assets/README_KEYSTORE.txt
-          بيانات مفتاح التوقيع الرسمي لمتجر Google Play وتحديثات الـ APK المباشرة:
-          ملاحظة مهمة: ارفع ملف hams_release.keystore إلى الصفحة الرئيسية لمستودعك على GitHub لكي يوقع به أي تحديث مستقبلي تلقائياً!
-          Keystore file: hams_release.keystore
-          Key Alias: hams_key
-          Store Password: hams_store_2026
-          Key Password: hams_store_2026
-          EOF
-
           cp build/app/outputs/flutter-apk/app-release.apk google_play_assets/hams-release.apk
           cp build/app/outputs/bundle/release/app-release.aab google_play_assets/hams-release.aab
           ls -lh google_play_assets/
 
-      - name: 9. Upload Hams APK & Google Play Package
+      - name: 10. Upload Hams APK & Google Play Package
         uses: actions/upload-artifact@v4
         with:
           name: Hams-APK
