@@ -16,11 +16,8 @@ jobs:
           mkdir -p /tmp/hams_backup/audio
           find . -maxdepth 3 -iname "*.mp3" -exec cp {} /tmp/hams_backup/audio/ \; || true
           if [ -f "hams_release.keystore" ]; then cp hams_release.keystore /tmp/hams_backup/hams_release.keystore; fi
-          if [ -f "adhkar.json" ]; then
-            cp adhkar.json /tmp/hams_backup/adhkar.json
-          elif [ -f "azkar.json" ]; then
-            cp azkar.json /tmp/hams_backup/adhkar.json
-          fi
+          if [ -f "azkar.json" ]; then cp azkar.json /tmp/hams_backup/azkar.json; fi
+          if [ -f "adhkar.json" ]; then cp adhkar.json /tmp/hams_backup/adhkar_fallback.json; fi
           ls -la /tmp/hams_backup/
           ls -la /tmp/hams_backup/audio/
 
@@ -30,18 +27,28 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 4. Install Pillow & Noto Arabic Fonts
+      - name: 4. Cache Gradle Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-hams-v1
+          restore-keys: |
+            ${{ runner.os }}-gradle-hams-
+
+      - name: 5. Install Pillow & Noto Arabic Fonts
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-pil fonts-noto-core
 
-      - name: 5. Setup Flutter
+      - name: 6. Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.8'
           channel: 'stable'
 
-      - name: 6. Create Clean Flutter Project & Map All 12 MP3s
+      - name: 7. Create Clean Flutter Project & Map All 12 MP3s
         shell: python3 {0}
         run: |
           import os, glob, shutil, subprocess
@@ -66,7 +73,7 @@ jobs:
                       src = mp3_files[(i - 1) % len(mp3_files)]
                       shutil.copy(src, target)
 
-      - name: 7. Parse Uploaded Adhkar JSON into 5 Categories
+      - name: 8. Fetch & Parse Full Azkar JSON (With Descriptions)
         shell: python3 {0}
         run: |
           import os, json, urllib.request
@@ -75,35 +82,46 @@ jobs:
           os.makedirs("assets", exist_ok=True)
 
           raw_data = None
-          if os.path.exists("/tmp/hams_backup/adhkar.json"):
-              with open("/tmp/hams_backup/adhkar.json", "r", encoding="utf-8-sig") as f:
+          if os.path.exists("/tmp/hams_backup/azkar.json"):
+              with open("/tmp/hams_backup/azkar.json", "r", encoding="utf-8-sig") as f:
                   raw_data = json.load(f)
-              print("Loaded adhkar.json from repository.")
+              print("Loaded custom azkar.json from repository.")
           else:
               urls = [
-                  "https://raw.githubusercontent.com/rn0x/Adhkar-json/main/adhkar.json",
-                  "https://raw.githubusercontent.com/nawafalqari/azkar-api/56df51279ab6eb86dc2f6202c7de26c8948331c1/azkar.json"
+                  "https://raw.githubusercontent.com/nawafalqari/ayah/56df51279ab6eb86dc2f6202c7de26c8948331c1/azkar.json",
+                  "https://raw.githubusercontent.com/osamayy/azkar-db/master/azkar.json",
+                  "https://raw.githubusercontent.com/rn0x/Adhkar-json/main/adhkar.json"
               ]
               for url in urls:
                   try:
                       req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
                       with urllib.request.urlopen(req, timeout=25) as resp:
                           raw_data = json.loads(resp.read().decode("utf-8-sig"))
-                          print(f"Fetched adhkar data from: {url}")
+                          print(f"Fetched azkar data from: {url}")
                           break
                   except Exception as e:
                       print(f"Source skipped ({url}): {e}")
+
+          if raw_data is None and os.path.exists("/tmp/hams_backup/adhkar_fallback.json"):
+              with open("/tmp/hams_backup/adhkar_fallback.json", "r", encoding="utf-8-sig") as f:
+                  raw_data = json.load(f)
+              print("Used fallback adhkar.json from repository.")
 
           if isinstance(raw_data, dict) and isinstance(raw_data.get("categories"), list):
               final_payload = raw_data
           else:
               buckets = {
                   "morning": {"id": "morning", "title": "أذكار الصباح", "icon": "wb_sunny", "items": []},
-                  "evening": {"id": "evening", "title": "أذكار المساء", "icon": "nights_stay", "items": []},
                   "prayer": {"id": "prayer", "title": "أذكار الصلاة", "icon": "mosque", "items": []},
+                  "evening": {"id": "evening", "title": "أذكار المساء", "icon": "nights_stay", "items": []},
                   "sleep": {"id": "sleep", "title": "أذكار النوم", "icon": "bedtime", "items": []},
                   "selected": {"id": "selected", "title": "أذكار مختارة", "icon": "auto_awesome", "items": []},
               }
+
+              def clean_text(val):
+                  s = str(val or "").replace("\\n", "\n")
+                  s = s.strip(" \n\r\t,'\"،")
+                  return s
 
               def clean_count(val):
                   try:
@@ -112,66 +130,84 @@ jobs:
                   except Exception:
                       return 1
 
-              def add_item(bucket_key, text, count, note=""):
-                  t = str(text or "").strip()
-                  if not t:
+              def flatten_items(arr):
+                  result = []
+                  if not isinstance(arr, list):
+                      return result
+                  for x in arr:
+                      if isinstance(x, dict):
+                          result.append(x)
+                      elif isinstance(x, list):
+                          result.extend(flatten_items(x))
+                  return result
+
+              def add_item(bucket_key, item, fallback_cat=""):
+                  txt = clean_text(item.get("content") or item.get("text") or item.get("zekr") or "")
+                  if not txt or txt.lower() == "stop":
                       return
+                  desc = clean_text(item.get("description") or item.get("note") or item.get("bless") or "")
+                  ref = clean_text(item.get("reference") or "")
+                  if desc and ref and ref not in desc:
+                      note = f"{desc}\n({ref})"
+                  else:
+                      note = desc or ref or (fallback_cat if bucket_key == "selected" else "")
                   buckets[bucket_key]["items"].append({
-                      "text": t,
-                      "count": clean_count(count),
-                      "note": str(note or "").strip()
+                      "text": txt,
+                      "count": clean_count(item.get("count") or item.get("repeat") or 1),
+                      "note": note
                   })
 
-              if isinstance(raw_data, list):
+              if isinstance(raw_data, dict):
+                  for cat, arr in raw_data.items():
+                      for item in flatten_items(arr):
+                          if "الصباح" in cat and "المساء" in cat:
+                              add_item("morning", item)
+                              add_item("evening", item)
+                          elif "الصباح" in cat:
+                              add_item("morning", item)
+                          elif "المساء" in cat:
+                              add_item("evening", item)
+                          elif "الصلاة" in cat:
+                              add_item("prayer", item)
+                          elif "النوم" in cat:
+                              add_item("sleep", item)
+                          elif len(buckets["selected"]["items"]) < 45:
+                              add_item("selected", item, cat)
+              elif isinstance(raw_data, list):
                   for entry in raw_data:
                       if not isinstance(entry, dict):
                           continue
-                      cat = str(entry.get("category", ""))
-                      arr = entry.get("array", [])
-                      if not isinstance(arr, list):
-                          continue
-                      for item in arr:
-                          if not isinstance(item, dict):
-                              continue
-                          txt = item.get("text") or item.get("content") or ""
-                          cnt = item.get("count", 1)
-                          note = item.get("description") or item.get("note") or ""
+                      if "category" in entry and "array" in entry:
+                          cat = str(entry.get("category", ""))
+                          for item in flatten_items(entry.get("array", [])):
+                              if "الصباح" in cat and "المساء" in cat:
+                                  add_item("morning", item)
+                                  add_item("evening", item)
+                              elif "الصباح" in cat:
+                                  add_item("morning", item)
+                              elif "المساء" in cat:
+                                  add_item("evening", item)
+                              elif "الصلاة" in cat:
+                                  add_item("prayer", item)
+                              elif "النوم" in cat:
+                                  add_item("sleep", item)
+                              elif len(buckets["selected"]["items"]) < 45:
+                                  add_item("selected", item, cat)
+                      else:
+                          cat = str(entry.get("category", ""))
                           if "الصباح" in cat and "المساء" in cat:
-                              add_item("morning", txt, cnt, note)
-                              add_item("evening", txt, cnt, note)
+                              add_item("morning", entry)
+                              add_item("evening", entry)
                           elif "الصباح" in cat:
-                              add_item("morning", txt, cnt, note)
+                              add_item("morning", entry)
                           elif "المساء" in cat:
-                              add_item("evening", txt, cnt, note)
-                          elif "الصلاة" in cat or "السلام من الصلاة" in cat:
-                              add_item("prayer", txt, cnt, note)
-                          elif "النوم" in cat:
-                              add_item("sleep", txt, cnt, note)
-                          elif len(buckets["selected"]["items"]) < 40:
-                              add_item("selected", txt, cnt, note or cat)
-              elif isinstance(raw_data, dict):
-                  for cat, arr in raw_data.items():
-                      if not isinstance(arr, list):
-                          continue
-                      for item in arr:
-                          if not isinstance(item, dict):
-                              continue
-                          txt = item.get("content") or item.get("text") or ""
-                          cnt = item.get("count", 1)
-                          note = item.get("description") or item.get("note") or ""
-                          if "الصباح" in cat and "المساء" in cat:
-                              add_item("morning", txt, cnt, note)
-                              add_item("evening", txt, cnt, note)
-                          elif "الصباح" in cat:
-                              add_item("morning", txt, cnt, note)
-                          elif "المساء" in cat:
-                              add_item("evening", txt, cnt, note)
+                              add_item("evening", entry)
                           elif "الصلاة" in cat:
-                              add_item("prayer", txt, cnt, note)
+                              add_item("prayer", entry)
                           elif "النوم" in cat:
-                              add_item("sleep", txt, cnt, note)
-                          elif len(buckets["selected"]["items"]) < 40:
-                              add_item("selected", txt, cnt, note or cat)
+                              add_item("sleep", entry)
+                          elif len(buckets["selected"]["items"]) < 45:
+                              add_item("selected", entry, cat)
 
               final_payload = {
                   "categories": [
@@ -187,15 +223,16 @@ jobs:
               json.dump(final_payload, f, ensure_ascii=False, indent=2)
 
           for cat in final_payload.get("categories", []):
-              print(f"Category [{cat.get('id')}] ({cat.get('title')}): {len(cat.get('items', []))} items")
+              items = cat.get("items", [])
+              with_notes = sum(1 for x in items if x.get("note"))
+              print(f"Category [{cat.get('id')}] ({cat.get('title')}): {len(items)} items ({with_notes} with notes)")
 
-      - name: 8. Generate Clean main.dart, Native Service & Exact Splash Icon
+      - name: 9. Generate Clean main.dart, Native Service & Exact Splash Icon
         shell: python3 {0}
         run: |
           import os, glob, shutil
           from PIL import Image, ImageDraw, ImageFont
 
-          # نسخ خط النسخ العربي الرسمي داخل التطبيق لعرض الأذكار بخط تراثي مريح للعين
           naskh_candidates = (
               glob.glob("/usr/share/fonts/**/NotoNaskhArabic-Regular.ttf", recursive=True) +
               glob.glob("/usr/share/fonts/**/NotoNaskhArabic*.ttf", recursive=True) +
@@ -211,7 +248,7 @@ jobs:
               "name: hams\n"
               "description: Hams\n"
               "publish_to: 'none'\n"
-              "version: 1.2.0+3\n"
+              "version: 1.2.1+4\n"
               "environment:\n"
               "  sdk: '>=3.0.0 <4.0.0'\n"
               "dependencies:\n"
@@ -2111,7 +2148,7 @@ jobs:
           open(main_kt_path, "w", encoding="utf-8").write("\n".join(main_lines))
           print("All Dart, Kotlin, Prayer-Now Style Adhkar UI, and Exact Splash Icons generated cleanly!")
 
-      - name: 9. Compile & Sign Release APK + Play Store AAB with Persistent Key
+      - name: 10. Compile & Sign Release APK + Play Store AAB with Persistent Key
         run: |
           mkdir -p /tmp/hams_backup google_play_assets
           if [ ! -f "/tmp/hams_backup/hams_release.keystore" ]; then
@@ -2172,7 +2209,7 @@ jobs:
           cp build/app/outputs/bundle/release/app-release.aab google_play_assets/hams-release.aab
           ls -lh google_play_assets/
 
-      - name: 10. Upload Hams APK & Google Play Package
+      - name: 11. Upload Hams APK & Google Play Package
         uses: actions/upload-artifact@v4
         with:
           name: Hams-APK
